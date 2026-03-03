@@ -753,6 +753,7 @@ var (
 ```
 
 Build command:
+
 ```
 -ldflags="-X 'main.version=${VERSION}' -X 'main.commit=${COMMIT}' -X 'main.date=${DATE}'"
 ```
@@ -957,6 +958,7 @@ selectively disables only a few:
 in CI. Run them before committing. `gofmt` rewrites `interface{}` to `any`.
 
 **`//nolint` directives** must:
+
 - Name the specific linter: `//nolint:mnd`
 - Include an explanation: `//nolint:mnd // sentinel value, not magic`
 - Not be left unused (the `nolintlint` linter checks this)
