@@ -80,7 +80,7 @@ These deviations from `CONVENTIONS.md` were decided during planning and must not
 
 - [x] **WP-01** — Module Manifest Reset (`go.mod`, `go.sum`)
 - [x] **WP-02** — Data Models (`internal/model/`)
-- [ ] **WP-03** — Logger + Clock (`internal/logger/`, `internal/clock/`)
+- [x] **WP-03** — Logger + Clock (`internal/logger/`, `internal/clock/`)
 - [ ] **WP-04** — Configuration (`internal/config/`)
 - [ ] **WP-05** — Client State Registry (`internal/clientstate/`)
 - [ ] **WP-06** — Scheduler (`internal/scheduler/`)

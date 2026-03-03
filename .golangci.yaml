@@ -118,6 +118,12 @@ linters:
           - mnd
           - lll
 
+      # Logger tests mutate the global logger singleton via Set(); running them
+      # in parallel would cause non-deterministic test failures.
+      - path: internal/logger/logger_test\.go
+        linters:
+          - paralleltest
+
       # Based on existing code, the modifications should be limited to make maintenance easier.
       - path: pkg/golinters/unused/unused.go
         linters: [gocritic]
