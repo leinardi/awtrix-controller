@@ -28,13 +28,44 @@ Go app embedding an MQTT broker for [Awtrix3](https://blueforcer.github.io/awtri
 - **Logger**: `slog.NewJSONHandler(os.Stdout, ...)` by default; no `plain_handler.go`.
 - **`main()`**: calls `os.Exit(run())` only; all logic and deferred cleanup in `run() int`.
 
+## Common Linter Violations to Avoid
+
+### `varnamelen` — variable names too short for scope
+
+Use descriptive names whenever a variable is used across more than ~3 lines or in a large function.
+
+- `r` → `reg` (registry), `cfg` is fine in short constructors but not across a 30-line function
+- `cs` → `state`, `n` → `concurrency`, `wg` → `waitGroup`, `i` → `idx`, `id` → `clientID`
+- Short names (`ok`, `err`, `i`) are fine in truly tight scopes (2–3 lines).
+
+### `builtinShadow` (gocritic) — shadowing a predeclared identifier
+
+Never use Go builtin names as local variable names: `copy`, `len`, `cap`, `new`, `make`, `close`, `delete`, `append`, `error`, `panic`, `print`, `real`, `imag`, `complex`.
+
+- `copy := *cs` → `snap := *state`
+
+### `paralleltest` — test functions must call `t.Parallel()`
+
+Every top-level `Test*` function must begin with `t.Parallel()`. This also satisfies the `unused-parameter` check for `t`.
+
+```go
+func TestFoo(t *testing.T) {
+    t.Parallel()
+    // ...
+}
+```
+
+### `unused-parameter` (revive) — `t *testing.T` appears unused
+
+Caused by test functions that never call any `t.*` method. Adding `t.Parallel()` (see above) resolves this.
+
 ## WP Status
 
 - [x] WP-01 — Module Manifest Reset
 - [x] WP-02 — Data Models (`internal/model/`)
 - [x] WP-03 — Logger + Clock (`internal/logger/`, `internal/clock/`)
 - [x] WP-04 — Configuration (`internal/config/`)
-- [ ] WP-05 — Client State Registry (`internal/clientstate/`)
+- [x] WP-05 — Client State Registry (`internal/clientstate/`)
 - [ ] WP-06 — Scheduler (`internal/scheduler/`)
 - [ ] WP-07 — Day/Night Mode (`internal/daynight/`)
 - [ ] WP-08 — Energy-Saving Mode (`internal/energysaving/`)
