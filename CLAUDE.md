@@ -39,7 +39,7 @@ interface** — all communication with devices is via MQTT.
 
    A WP is not complete until `go test -race` is green for the new packages.
 
-4. **Use context7 for library docs.** Before writing code that uses `comqtt`, `go-sunrise`,
+4. **Use context7 for library docs.** Before writing code that uses `comqtt`, `go-solar`,
    `gopkg.in/yaml.v3`, or any other third-party library, resolve the library via context7
    (`mcp__context7__resolve-library-id`) and query its docs (`mcp__context7__query-docs`).
    Do not guess APIs.
@@ -79,7 +79,7 @@ These deviations from `CONVENTIONS.md` were decided during planning and must not
 ## Current Implementation Status
 
 - [x] **WP-01** — Module Manifest Reset (`go.mod`, `go.sum`)
-- [ ] **WP-02** — Data Models (`internal/model/`)
+- [x] **WP-02** — Data Models (`internal/model/`)
 - [ ] **WP-03** — Logger + Clock (`internal/logger/`, `internal/clock/`)
 - [ ] **WP-04** — Configuration (`internal/config/`)
 - [ ] **WP-05** — Client State Registry (`internal/clientstate/`)
@@ -108,7 +108,7 @@ Update this list by replacing `[ ]` with `[x]` as each WP is completed.
 
 - Every time-dependent package constructor takes `clk clock.Clock` as a parameter.
   `clock.RealClock` for production; `clock.FakeClock` for tests.
-- The `go-sunrise` library takes a `time.Time` argument directly, so passing `clk.Now()` is
+- The `go-solar` library takes a `time.Time` argument directly, so passing `clk.Now()` is
   sufficient — no additional sunrise function mocking needed (use a real polar lat/lon +
   winter date to trigger the polar fallback; or inject a `sunriseFunc` param on `daynight.Controller`).
 
@@ -181,5 +181,5 @@ Update this list by replacing `[ ]` with `[x]` as each WP is completed.
 ### go.mod
 
 - The current `go.mod` contains Docker, Prometheus, and OpenTelemetry imports — all wrong.
-  WP-01 replaces it entirely. Direct dependencies are only: `comqtt/v2`, `go-sunrise`,
+  WP-01 replaces it entirely. Direct dependencies are only: `comqtt/v2`, `go-solar`,
   `gopkg.in/yaml.v3`.

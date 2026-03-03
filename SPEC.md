@@ -211,6 +211,7 @@ new_year:
 ### 3.3 Publish Behavior (outgoing)
 
 All messages published by the application use:
+
 - **QoS:** AT_LEAST_ONCE (QoS 1)
 - **Retain:** `true` for `{clientId}/settings` publishes; `false` for all others
 
@@ -279,6 +280,7 @@ func (h *CredentialHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packe
 ```
 
 **Relevant hooks for this application:**
+
 - `OnConnectAuthenticate` → validate credentials
 - `OnConnect` → detect new device connections; trigger initial settings push (see §6.3)
 - `OnDisconnect` → detect device disconnections; clear in-memory client state (see §6.6)
@@ -699,18 +701,21 @@ Valid values for `Notification.effect` / `CustomApp.effect`:
 **Purpose:** Adapt display colors to ambient conditions based on the time of day at the configured location.
 
 **Trigger events:**
+
 - At sunrise time → switch to **Day** mode
 - At sunset time → switch to **Night** mode
 
 **Determination at startup:** At application startup, calculate whether it is currently day or night in the configured timezone, based on whether the current time falls between today's sunrise and sunset. Apply the correct initial mode before the broker starts accepting connections.
 
 **Mode switching:**
+
 1. Compute the next sunrise and sunset times for the configured location using an astronomical algorithm (visual twilight — upper limb of the sun at the horizon is recommended).
 2. Schedule a one-shot timer for whichever event comes next.
 3. When that timer fires, switch mode and reschedule the next event for the following day.
 4. On a mode change, push updated settings (see [§6.3](#63-settings-push)) to **all currently connected clients**.
 
 **Polar latitude fallback:** At some latitudes there are periods where the sun never rises (polar night) or never sets (midnight sun), and astronomical libraries return no result for one or both events. In these cases:
+
 - If sunrise cannot be computed (polar night): stay in **Night** mode for the current day; schedule a retry at the start of the next calendar day.
 - If sunset cannot be computed (midnight sun): stay in **Day** mode for the current day; schedule a retry at the start of the next calendar day.
 - Log a warning indicating the condition (not an error). Do not enter a retry loop.
@@ -735,14 +740,17 @@ Valid values for `Notification.effect` / `CustomApp.effect`:
 **Window:** Defined by `energy_saving.start` and `energy_saving.end` in the configured timezone. The window may span midnight.
 
 **Behavior when energy-saving is ACTIVE:**
+
 - `BRI` (brightness) = `1`
 - `ABRI` (auto-brightness) = `false`
 
 **Behavior when energy-saving is INACTIVE:**
+
 - `BRI` is **not included** in the settings push. The Awtrix firmware treats `ABRI=true` as taking precedence over any previously set manual brightness value, so omitting `BRI` is intentional and correct.
 - `ABRI` = `true`
 
 **Trigger events:**
+
 - At `start` time each day → activate energy-saving mode → push updated settings to all connected clients.
 - At `end` time each day → deactivate energy-saving mode → push updated settings to all connected clients.
 
@@ -764,6 +772,7 @@ A settings push sends a `Settings` JSON object to `{clientId}/settings` with `re
 | `BRI`, `ABRI` | Energy-saving profile (`BRI` only included when energy saving is active) |
 
 **When settings are pushed:**
+
 1. A new client connects (detected via the broker's `OnConnect` event)
 2. Day/Night mode changes
 3. Energy-saving mode activates or deactivates
@@ -779,6 +788,7 @@ In all cases, the two layers (theme + energy profile) are evaluated together and
 **Scheduling:** For each entry in `birthdays`, schedule a repeating yearly alarm that fires at `00:00:00` in the configured timezone on the configured month and day.
 
 **At alarm fire time:**
+
 1. Compute the person's current age: `current_year - birth_year`. Since the alarm fires at midnight at the start of the birthday, the person is turning that age today, so no further adjustment is needed.
 2. Build the notification text:
    - If `message` is empty or absent: generate `"Happy <N> Birthday <name>!"` where `<N>` is the computed age.
@@ -808,6 +818,7 @@ In all cases, the two layers (theme + energy profile) are evaluated together and
 **Scheduling:** If `new_year.enabled` is `true`, schedule a repeating yearly alarm that fires at `00:00:00` in the configured timezone on January 1st.
 
 **At alarm fire time:**
+
 1. If `new_year.enabled` is `false`, do nothing and return.
 2. Read the current year at the moment of firing (this is the year being welcomed in).
 3. Build the notification text:
@@ -837,6 +848,7 @@ The application maintains in-memory state for each connected client. This state 
 | Latest stats | `{clientId}/stats` publish | The most recently received `Stats` payload |
 
 **Connection lifecycle:**
+
 - On client **connect** (OnConnect hook): register the client as connected; push current settings to `{clientId}/settings`.
 - On client **disconnect** (OnDisconnect hook): remove the client's in-memory state (stored stats and current app name) and remove it from the connected client set. This prevents stale state accumulation for devices that were once connected but are no longer reachable.
 
@@ -872,6 +884,7 @@ All scheduled times are interpreted in the configured timezone (see §2.2).
 | New Year | Yearly on January 1st at `00:00:00` (if enabled) | Send New Year notification to all clients |
 
 **Startup initialization order:**
+
 1. Load and validate configuration; exit on error.
 2. Determine current day/night state in the configured timezone; apply immediately.
 3. Determine current energy-saving state; apply immediately.

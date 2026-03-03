@@ -47,7 +47,7 @@ declaring only the three external dependencies this application needs.
 
 ```
 github.com/wind-c/comqtt/v2          # embedded MQTT broker (SPEC §3.5)
-github.com/nathan-osman/go-sunrise   # sunrise/sunset calculation (SPEC §6.1)
+https://github.com/mstephenholl/go-solar   # sunrise/sunset calculation (SPEC §6.1)
 gopkg.in/yaml.v3                     # YAML config parsing (SPEC §2.1)
 ```
 
@@ -240,7 +240,7 @@ factory (for deterministic tests).
 
 ## WP-07: Day/Night Mode (`internal/daynight`)
 
-**Goal:** Sunrise/sunset calculation using `go-sunrise`, Day/Night mode state, polar-night
+**Goal:** Sunrise/sunset calculation using `go-solar`, Day/Night mode state, polar-night
 fallback, and scheduler integration with injectable `sunriseFunc` for testing.
 
 **Files to create:**
@@ -294,10 +294,12 @@ scheduler integration.
   next activation/deactivation
 - `IsActive() bool` — read-locked
 - `isInWindow(t time.Time) bool` — midnight-spanning check:
+
   ```
   if start < end: active = start <= tod < end
   if start >= end: active = tod >= start || tod < end
   ```
+
   where `tod` is time-of-day in the configured timezone
 - `nextBoundary(from time.Time) (fireAt time.Time, willActivate bool)` — next start or end
   after `from` in configured timezone
@@ -519,7 +521,7 @@ Env-var resolution after `flag.Parse()`:
 ### Injectable Clock Pattern
 
 Every time-dependent constructor takes `clk clock.Clock`. Production wiring passes
-`clock.NewRealClock()`; tests pass `clock.NewFakeClock(fixedTime)`. The `go-sunrise` library
+`clock.NewRealClock()`; tests pass `clock.NewFakeClock(fixedTime)`. The `go-solar` library
 takes a `time.Time` argument, so `clk.Now()` is sufficient — no further mocking needed for polar
 tests (use a real polar latitude + winter date).
 
