@@ -1,0 +1,51 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025 Roberto Leinardi
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+// Package main is the entry point for the awtrix-controller binary.
+package main
+
+import "os"
+
+func main() {
+	os.Exit(run())
+}
+
+// run is the application entry point called by main. It returns an exit code:
+//   - 0: clean shutdown
+//   - 1: configuration error
+//   - 2: runtime startup error (e.g. port already in use)
+//
+// All logic is implemented here (not in main) so that defer statements
+// execute before os.Exit is called.
+//
+// TODO(WP-11): implement full startup sequence, CLI flag parsing, and wiring.
+func run() int {
+	// version, commit, and date are injected via -ldflags at build time.
+	// They will be logged at startup once WP-11 is implemented.
+	_ = version
+	_ = commit
+	_ = date
+
+	return 0
+}
