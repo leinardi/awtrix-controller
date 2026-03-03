@@ -1,0 +1,30 @@
+services:
+  awtrix-controller:
+    image: ghcr.io/leinardi/awtrix-controller:latest # dclint disable-line service-image-require-explicit-tag
+
+    # Mount the configuration file (required).
+    volumes:
+      - /etc/awtrix-controller/config.yaml:/etc/awtrix-controller/config.yaml:ro
+
+    # Publish the embedded MQTT broker port.
+    ports:
+      - target: 1883
+        published: 1883
+        protocol: tcp
+        mode: ingress
+
+    # Minimal, explicit args. Override --config if the file lives elsewhere.
+    command: [ "--config", "/etc/awtrix-controller/config.yaml" ]
+
+    restart: unless-stopped
+
+    deploy:
+      mode: replicated
+      replicas: 1
+
+    # Security/operability hardening:
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp

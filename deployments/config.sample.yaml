@@ -1,0 +1,146 @@
+# awtrix-controller sample configuration
+# Copy this file, fill in the required fields, and point --config at it.
+# All optional fields show their default values.
+
+# ---------------------------------------------------------------------------
+# MQTT broker (required)
+# ---------------------------------------------------------------------------
+mqtt:
+  username: awtrix # required: password Awtrix3 devices must use
+  password: changeme # required: change before deploying
+  port: 1883 # optional: TCP listen port (default: 1883)
+  # ws_port: 8883           # optional: WebSocket port; omit to disable
+
+# ---------------------------------------------------------------------------
+# Geographic location — used for sunrise/sunset calculation (required)
+# ---------------------------------------------------------------------------
+location:
+  latitude: 48.1315733 # Munich
+  longitude: 11.5397411
+
+# ---------------------------------------------------------------------------
+# Timezone (optional, but strongly recommended)
+# IANA timezone name — https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+# If absent the system timezone is used and a warning is logged.
+# ---------------------------------------------------------------------------
+timezone: Europe/Berlin
+
+# ---------------------------------------------------------------------------
+# Energy-saving window (optional)
+# Both times are HH:MM in the configured timezone. The window may span
+# midnight (e.g. start: "23:00" / end: "05:00").
+# ---------------------------------------------------------------------------
+energy_saving:
+  start: "00:30" # default
+  end: "06:00" # default
+
+# ---------------------------------------------------------------------------
+# Theme — colors pushed to every connected device on day/night transitions
+# All values are #RRGGBB hex strings.
+# ---------------------------------------------------------------------------
+theme:
+  day:
+    calendar_accent: "#FF0000" # calendar header + active weekday
+    content: "#FFFFFF" # text, date, inactive weekday
+  night:
+    calendar_accent: "#FF0000"
+    content: "#474747"
+
+# ---------------------------------------------------------------------------
+# Scheduled notifications (optional, repeating list)
+# repeat: yearly | monthly | weekly | daily
+# date required for yearly (MM-DD); day for monthly (1-31);
+# weekday for weekly (monday-sunday); time optional (HH:MM, default: 00:00)
+# ---------------------------------------------------------------------------
+scheduled_notifications:
+  # Yearly — New Year
+  - name: New Year
+    message: "Happy New Year {year}!"
+    repeat: yearly
+    date: "01-01"
+    duration: 600
+    icon: "5855"
+    rainbow: true
+    scroll_speed: 50
+    wakeup: true
+    # enabled: false          # set to false to disable
+
+  # Weekly — workday standup (one alarm per listed day)
+  - name: Weekly Standup
+    message: "Standup in 2 minutes!"
+    icon: "609"
+    repeat: weekly
+    weekdays:
+      - monday
+      - tuesday
+      - wednesday
+      - thursday
+      - friday
+    time: "10:58"
+#
+#   # Yearly — birthday
+#   - name: Alice
+#     message: "Happy Birthday {name}!"
+#     repeat: yearly
+#     date: "03-15"
+#     duration: 600             # seconds on screen (default: 60)
+#     icon: "14004"             # LaMetric icon ID (default: "9597")
+#     rainbow: true             # rainbow text effect (default: false)
+#     scroll_speed: 50          # px/frame (default: 50)
+#     wakeup: true              # wake display from sleep (default: true)
+#     # rtttl: ""               # optional RTTTL melody string
+#     # time: "00:00"           # fire time HH:MM (default: 00:00)
+#
+#   # Monthly — first of the month reminder
+#   - name: Monthly Report
+#     message: "Monthly report due today!"
+#     repeat: monthly
+#     day: 1
+#     time: "09:00"
+#
+#   # Daily — morning greeting
+#   - name: Good Morning
+#     message: "Good morning!"
+#     repeat: daily
+#     time: "07:00"
+
+# ---------------------------------------------------------------------------
+# Weather overlays and warning notifications (optional)
+# Requires location to be set. Uses Open-Meteo (free, no API key needed).
+# When enabled, polls every poll_interval_minutes and:
+#   - applies a weather overlay effect (rain/snow/thunder/…) to all devices
+#   - sends warning notifications for severe weather events
+# ---------------------------------------------------------------------------
+weather:
+  enabled: true
+
+  # Polling
+  # poll_interval_minutes: 15       # how often to fetch Open-Meteo data
+  # data_stale_ttl_minutes: 45      # discard cached data older than this
+
+  # Overlay — look-ahead window for selecting the active overlay effect
+  # overlay_horizon_minutes: 60
+
+  # Notifications — look-ahead window and repeat behaviour
+  # notification_horizon_hours: 8   # scan this many hours ahead for events
+  # notification_repeat_minutes: 60 # re-notify no more often than this
+  # notification_text_repeat: 3     # times the message scrolls per notification
+  # inactive_after_missing_polls: 2 # clear event after N consecutive empty polls
+
+  # Warning thresholds
+  # gust_warn_kmh: 45.0             # wind gust warning threshold
+  # gust_severe_kmh: 60.0           # wind gust severe threshold
+  # heavy_rain_mm_per_15min: 5.0    # precipitation threshold for heavy rain
+  # fog_visibility_warn_m: 1000.0   # visibility warning threshold
+  # fog_visibility_severe_m: 200.0  # visibility severe threshold
+  # frost_temp_c: 2.0               # temperature threshold for frost risk
+  # frost_dew_point_delta_c: 2.0    # temp-dewpoint delta for frost risk
+
+  # Per-event notification toggles (all default true except notify_fog)
+  # notify_thunderstorm: true
+  # notify_freezing_precip: true
+  # notify_frost_risk: true
+  # notify_heavy_rain: true
+  # notify_strong_gusts: true
+  # notify_snow: true
+  # notify_fog: false               # disabled by default (higher noise)
