@@ -124,6 +124,21 @@ linters:
         linters:
           - paralleltest
 
+      # Config YAML keys intentionally use snake_case to match the conventional
+      # YAML style (energy_saving, new_year, ws_port, calendar_accent, etc.).
+      # The tagliatelle linter expects camelCase for YAML tags, which is wrong here.
+      - path: internal/config/config\.go
+        linters:
+          - tagliatelle
+
+      # The config package legitimately stores MQTT credentials read from the
+      # user's config file. gosec G117 (secret in exported field) is a false
+      # positive here — the field is not a hardcoded credential.
+      - path: internal/config/config\.go
+        linters:
+          - gosec
+        text: "G117"
+
       # Based on existing code, the modifications should be limited to make maintenance easier.
       - path: pkg/golinters/unused/unused.go
         linters: [gocritic]
