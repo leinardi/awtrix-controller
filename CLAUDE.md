@@ -1,72 +1,28 @@
 # awtrix-controller
 
-Go app embedding an MQTT broker for [Awtrix3](https://blueforcer.github.io/awtrix-light/) displays. No HTTP interface.
+Go embedded MQTT broker for Awtrix3 displays. Behavior spec: `SPEC.md`. Work packages: `PLAN.md`. Style guide: `CONVENTIONS.md`.
 
-## Reference Documents
+## Commands
 
-| File             | Role                                                                           |
-|------------------|--------------------------------------------------------------------------------|
-| `SPEC.md`        | Authoritative behavioral spec (MQTT topics, features, exit codes, TC-01–TC-21) |
-| `PLAN.md`        | 11 work packages in dependency order — follow this sequence                    |
-| `CONVENTIONS.md` | Go style rules — follow unless overridden below                                |
-
-## Session Rules
-
-1. Follow WP order from `PLAN.md`; do not start a WP until its dependencies are complete and passing.
-2. Tests ship with the code — never defer to a later WP.
-3. Use context7 (`mcp__context7__resolve-library-id` + `mcp__context7__query-docs`) before writing code against any third-party library.
-4. MIT license header on every `.go` file (copy from `cmd/awtrix-controller/version.go`).
-5. Run `make check-stage` after staging any project file changes; fix all linter issues before marking a WP done.
-6. Verify `go build ./...` and `go test -race ./...` are green before marking a WP done.
-
-## Conventions Overrides
-
-- **No HTTP, no Prometheus** — skip CONVENTIONS.md §8 and §9 entirely.
-- **Broker**: `comqtt` (`github.com/wind-c/comqtt/v2`); stdlib `errors.Is` instead of `containerd/errdefs`.
-- **Internal packages**: `broker`, `clientstate`, `daynight`, `energysaving`, `notification`, `scheduler`, `settings` (no `collector`, no `labels`).
-- **CLI flags**: dual-register long+short with stdlib `flag` (no pflag). Env-var fallback via `flag.Visit` after `flag.Parse()`.
-- **Logger**: `slog.NewJSONHandler(os.Stdout, ...)` by default; no `plain_handler.go`.
-- **`main()`**: calls `os.Exit(run())` only; all logic and deferred cleanup in `run() int`.
-
-## Common Linter Violations to Avoid
-
-### `varnamelen` — variable names too short for scope
-
-Use descriptive names whenever a variable is used across more than ~3 lines or in a large function.
-
-- `r` → `reg` (registry), `cfg` is fine in short constructors but not across a 30-line function
-- `cs` → `state`, `n` → `concurrency`, `wg` → `waitGroup`, `i` → `idx`, `id` → `clientID`
-- Short names (`ok`, `err`, `i`) are fine in truly tight scopes (2–3 lines).
-
-### `builtinShadow` (gocritic) — shadowing a predeclared identifier
-
-Never use Go builtin names as local variable names: `copy`, `len`, `cap`, `new`, `make`, `close`, `delete`, `append`, `error`, `panic`, `print`, `real`, `imag`, `complex`.
-
-- `copy := *cs` → `snap := *state`
-
-### `paralleltest` — test functions must call `t.Parallel()`
-
-Every top-level `Test*` function must begin with `t.Parallel()`. This also satisfies the `unused-parameter` check for `t`.
-
-```go
-func TestFoo(t *testing.T) {
-    t.Parallel()
-    // ...
-}
+```bash
+go build ./...       # verify compilation
+go test -race ./...  # run all tests with race detector
+make check-stage     # run linter on staged files (golangci-lint + go test)
 ```
 
-### `unused-parameter` (revive) — `t *testing.T` appears unused
+Run `go build` and `go test -race` and `make check-stage` before marking any WP done.
 
-Caused by test functions that never call any `t.*` method. Adding `t.Parallel()` (see above) resolves this.
+## Project Constraints
 
-### `funcorder` — unexported methods must follow exported methods
-
-Within a struct, place all exported methods first, then unexported (helper) methods.
-
-- Wrong: `Schedule()` → `arm()` → `Stop()`
-- Right: `Schedule()` → `Stop()` → `arm()`
+- **No HTTP, no Prometheus** — MQTT-only via `github.com/wind-c/comqtt/v2`
+- **No pflag** — stdlib `flag` only; dual-register long+short flags; env-var fallback via `flag.Visit` after `flag.Parse()`
+- **`main()`** — calls `os.Exit(run())` only; all logic and deferred cleanup live in `run() int`
+- **MIT license header** on every `.go` file — copy from `cmd/awtrix-controller/version.go`
+- **context7** — use `mcp__context7__resolve-library-id` + `mcp__context7__query-docs` before writing code against any third-party library
 
 ## WP Status
+
+Follow PLAN.md order; never start a WP until its dependencies are complete and passing.
 
 - [x] WP-01 — Module Manifest Reset
 - [x] WP-02 — Data Models (`internal/model/`)
@@ -77,5 +33,17 @@ Within a struct, place all exported methods first, then unexported (helper) meth
 - [x] WP-07 — Day/Night Mode (`internal/daynight/`)
 - [x] WP-08 — Energy-Saving Mode (`internal/energysaving/`)
 - [x] WP-09 — Notifications (`internal/notification/`)
-- [ ] WP-10 — Settings Composer + MQTT Broker (`internal/settings/`, `internal/broker/`)
+- [x] WP-10 — Settings Composer + MQTT Broker (`internal/settings/`, `internal/broker/`)
 - [ ] WP-11 — Entry Point + Wiring (`cmd/awtrix-controller/`)
+
+## Linter Gotchas
+
+Fix these proactively — they fire on almost every WP:
+
+- **`varnamelen`**: short names only in ≤3-line scopes. `cs`→`state`, `wg`→`waitGroup`, `tz`→`timezone`, `id`→`clientID`
+- **`builtinShadow`**: never use a Go builtin as a variable name (`copy`, `len`, `cap`, `new`, `close`, `delete`, `append`, `error`)
+- **`paralleltest`**: every top-level `Test*` must call `t.Parallel()` as its first statement
+- **`funcorder`**: exported methods before unexported within a struct
+- **`exhaustive`**: every switch on an enum needs an explicit `case` for every value; no falling back to `default` only
+- **`noinlineerr`**: linter auto-splits `if err := foo(); err != nil` into two statements; use unique error variable names per call site (`hookErr`, `tcpErr`, …) to prevent the auto-fix from producing redeclarations
+- **Unnamed receivers**: use `func (*Type) Method()` for stateless methods — satisfies both `staticcheck ST1006` (no `_` receiver) and `revive unused-receiver` at once
