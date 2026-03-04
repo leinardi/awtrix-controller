@@ -1,6 +1,6 @@
 # awtrix-controller
 
-Go embedded MQTT broker for Awtrix3 displays. Behavior spec: `SPEC.md`. Work packages: `PLAN.md`. Style guide: `CONVENTIONS.md`.
+Go embedded MQTT broker for Awtrix3 displays. Behavior spec: `SPEC.md`.
 
 ## Commands
 

@@ -33,7 +33,7 @@
 The application is an embedded MQTT broker (not an MQTT client) that Awtrix3 displays connect to directly. It provides:
 
 | Feature | Description |
-|---|---|
+| --- | --- |
 | **Embedded MQTT broker** | Accepts connections from any standard MQTT 3.1/3.1.1 client |
 | **Day/Night theming** | Automatically adjusts display colors based on astronomical sunrise/sunset times at the configured location |
 | **Energy-saving mode** | Reduces brightness to minimum during a configurable nightly window |
@@ -132,7 +132,7 @@ new_year:
 #### `mqtt`
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `port` | integer | `1883` | MQTT TCP listen port |
 | `ws_port` | integer? | — | WebSocket listen port; absent/null = disabled |
 | `username` | string | — | **Required.** MQTT client username |
@@ -141,7 +141,7 @@ new_year:
 #### `location`
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `latitude` | float | — | **Required.** Decimal degrees (N positive) |
 | `longitude` | float | — | **Required.** Decimal degrees (E positive) |
 | `elevation` | float | `0.0` | Metres above sea level |
@@ -149,27 +149,27 @@ new_year:
 #### `timezone`
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `timezone` | string (IANA name) | System timezone | Timezone for all scheduled events and time comparisons. Example: `"Europe/Berlin"`, `"America/New_York"`, `"UTC"`. If absent, the system timezone is used and a startup warning is logged recommending explicit configuration. |
 
 #### `energy_saving`
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `start` | string (`HH:MM`) | `"00:30"` | Window start time in the configured timezone |
 | `end` | string (`HH:MM`) | `"06:00"` | Window end time in the configured timezone |
 
 #### `theme.day` / `theme.night`
 
 | Field | Type | Default (day / night) | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `calendar_accent` | `#RRGGBB` | `#FF0000` / `#FF0000` | Calendar header & active weekday color |
 | `content` | `#RRGGBB` | `#FFFFFF` / `#474747` | Text, date, inactive weekday color |
 
 #### Birthday entry
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `date_of_birth` | ISO-8601 date | **Required** | Year is used for age; month/day for yearly scheduling |
 | `name` | string | **Required** | Displayed in the auto-generated message |
 | `duration` | integer | `600` | Notification hold time (seconds) |
@@ -183,7 +183,7 @@ new_year:
 #### `new_year`
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Set to `false` to disable the New Year notification entirely |
 | `icon` | string | `"5855"` | LaMetric icon ID |
 | `duration` | integer | `600` | Notification hold time (seconds) |
@@ -226,7 +226,7 @@ The `clientId` that a device uses when connecting is the unique identifier used 
 [comqtt](https://github.com/wind-c/comqtt) (`github.com/wind-c/comqtt/v2`) is the recommended embedded MQTT broker library for the Go implementation. It is a strong fit for this project for the following reasons:
 
 | Criterion | comqtt |
-|---|---|
+| --- | --- |
 | **License** | MIT — no restrictions on embedding or distribution |
 | **MQTT versions** | 3.0, 3.1.1, and 5.0 |
 | **Embedding** | First-class: instantiate `mqtt.Server` directly in-process; no separate process needed |
@@ -297,7 +297,7 @@ func (h *CredentialHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packe
 The application intercepts all publish packets on the broker via the `OnPublish` hook.
 
 | Topic | Payload | Action |
-|---|---|---|
+| --- | --- | --- |
 | `{clientId}/stats` | JSON [`Stats`](#stats) | Update stored client stats |
 | `{clientId}/stat/currentApp` | Plain string (app name) | Update stored current app for this client |
 | `{clientId}/button/left` | `"0"` or `"1"` | Record button event (0 = released, 1 = pressed) |
@@ -311,7 +311,7 @@ The application intercepts all publish packets on the broker via the `OnPublish`
 The application may publish to any of these topics at any time. Payload is JSON unless marked *(empty)*.
 
 | Topic | Payload type | Retain | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `{clientId}/notify` | [`Notification`](#notification) | false | Display a transient notification |
 | `{clientId}/notify/dismiss` | *(empty)* | false | Dismiss the active notification |
 | `{clientId}/settings` | [`Settings`](#settings) | **true** | Push device settings (retained) |
@@ -369,7 +369,7 @@ Received on `{clientId}/stats`. All fields are required in the payload from the 
 ```
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `app` | string | Currently displayed app name |
 | `bat` | integer | Battery level (0–100 %) |
 | `bat_raw` | integer | Raw ADC battery value |
@@ -438,7 +438,7 @@ Sent to `{clientId}/settings` with `retain=true`. All fields are **optional**; o
 #### `TEFF` — Transition effect
 
 | Value | Effect |
-|---|---|
+| --- | --- |
 | `0` | Random |
 | `1` | Slide |
 | `2` | Dim |
@@ -458,7 +458,7 @@ Values `0`–`4` select different clock face styles defined by the firmware.
 #### `TFORMAT` — Time format strings
 
 | Value | Example output |
-|---|---|
+| --- | --- |
 | `%H:%M:%S` | `13:30:45` |
 | `%l:%M:%S` | `1:30:45` |
 | `%H:%M` | `13:30` |
@@ -471,7 +471,7 @@ Values `0`–`4` select different clock face styles defined by the firmware.
 #### `DFORMAT` — Date format strings
 
 | Value | Example output |
-|---|---|
+| --- | --- |
 | `%d.%m.%y` | `16.04.22` |
 | `%d.%m` | `16.04` |
 | `%y-%m-%d` | `22-04-16` |
@@ -532,7 +532,7 @@ Sent to `{clientId}/notify`. All fields optional.
 ```
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `text` | string | Notification text |
 | `textCase` | integer | 0 = original, 1 = uppercase, 2 = lowercase |
 | `topText` | boolean | Display text at top of matrix |
@@ -577,7 +577,7 @@ Sent to `{clientId}/notify`. All fields optional.
 Sent to `{clientId}/custom/{appName}`. Shares all fields with `Notification` (see above) plus:
 
 | Additional field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `pos` | integer | Position in the app rotation order |
 | `lifetime` | integer | App lifetime in seconds; `0` = infinite |
 | `lifetimeMode` | integer | When to reset lifetime: `0` = on message, `1` = on view |
@@ -600,7 +600,7 @@ Sent to `{clientId}/indicator1`, `indicator2`, or `indicator3`. Send an empty pa
 ```
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `color` | string | Color in any format the device accepts (e.g. `"#FF0000"` or `"255 0 0"`) |
 | `blink` | integer? | Blink interval in ms; omit or `0` for solid |
 | `fade` | integer? | Fade speed; omit or `0` for no fade |
@@ -659,7 +659,7 @@ Sent to `{clientId}/rtttl`.
 Used in `Notification.draw` and `CustomApp.draw`. Each draw command is a JSON object with a single key naming the command and an array of arguments as the value.
 
 | Command key | Arguments | Description |
-|---|---|---|
+| --- | --- | --- |
 | `dp` | `[x, y, "#color"]` | Set a single pixel |
 | `dl` | `[x0, y0, x1, y1, "#color"]` | Draw a line |
 | `dr` | `[x, y, w, h, "#color"]` | Draw a rectangle (outline) |
@@ -687,7 +687,7 @@ Valid values for `Notification.effect` / `CustomApp.effect`:
 ```
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `speed` | integer | Animation speed |
 | `palette` | string | Named color palette |
 | `blend` | boolean | Blend between palette colors |
@@ -723,7 +723,7 @@ Valid values for `Notification.effect` / `CustomApp.effect`:
 **Color values applied on a Settings push** (sourced from `theme.day` / `theme.night` config):
 
 | Settings field | Source |
-|---|---|
+| --- | --- |
 | `CHCOL` (calendar header color) | `calendar_accent` |
 | `CBCOL` (calendar background) | `content` |
 | `WDCA` (weekday active color) | `calendar_accent` |
@@ -767,7 +767,7 @@ A settings push sends a `Settings` JSON object to `{clientId}/settings` with `re
 **Fields the application always manages:**
 
 | Settings field | Managed by |
-|---|---|
+| --- | --- |
 | `CHCOL`, `CBCOL`, `WDCA`, `WDCI`, `TIME_COL`, `DATE_COL` | Day/Night theme |
 | `BRI`, `ABRI` | Energy-saving profile (`BRI` only included when energy saving is active) |
 
@@ -843,7 +843,7 @@ In all cases, the two layers (theme + energy profile) are evaluated together and
 The application maintains in-memory state for each connected client. This state is ephemeral — it is not written to disk and is lost on restart.
 
 | State | Updated by | Description |
-|---|---|---|
+| --- | --- | --- |
 | Current app name | `{clientId}/stat/currentApp` publish | The app currently being displayed |
 | Latest stats | `{clientId}/stats` publish | The most recently received `Stats` payload |
 
@@ -861,7 +861,7 @@ The application must be able to enumerate all **currently connected** client IDs
 The application receives button events via the button topics. In the current feature set, button events are **received and logged but not acted upon**. The infrastructure for receiving them must be in place so future features can react to them.
 
 | Button | Topic suffix |
-|---|---|
+| --- | --- |
 | Left | `button/left` |
 | Select | `button/select` |
 | Right | `button/right` |
@@ -875,7 +875,7 @@ Payload `"1"` = pressed, `"0"` = released.
 All scheduled times are interpreted in the configured timezone (see §2.2).
 
 | Event | Schedule | Action |
-|---|---|---|
+| --- | --- | --- |
 | Sunrise | One-shot at today's sunrise; reschedules daily | Switch to Day mode; push settings to all clients |
 | Sunset | One-shot at today's sunset; reschedules daily | Switch to Night mode; push settings to all clients |
 | Energy saving start | Daily at configured `start` time | Activate energy-saving; push settings to all clients |
@@ -901,7 +901,7 @@ All scheduled times are interpreted in the configured timezone (see §2.2).
 ## 8. Error Handling Requirements
 
 | Situation | Required behavior |
-|---|---|
+| --- | --- |
 | Config file absent or unreadable | Log an error with the file path; exit with code `1` |
 | Config file present but invalid YAML | Log a parse error with line/column details; exit with code `1` |
 | `mqtt.username` or `mqtt.password` absent | Log an error naming the missing field; exit with code `1` |
@@ -939,7 +939,7 @@ Each configurable flag has a corresponding environment variable. The resolution 
 3. Built-in default
 
 | Flag | Short | Environment variable | Default | Description |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `--config` | `-c` | `AWTRIX_CONFIG` | `/etc/awtrix-controller/config.yaml` | Path to the YAML configuration file |
 | `--log-level` | `-l` | `AWTRIX_LOG_LEVEL` | `info` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error` |
 | `--version` | `-v` | — | — | Print version string and exit |
@@ -960,7 +960,7 @@ AWTRIX_LOG_LEVEL=debug awtrix-controller --log-level info   # → info wins
 ### Exit Codes
 
 | Code | Meaning |
-|---|---|
+| --- | --- |
 | `0` | Clean shutdown |
 | `1` | Configuration error (missing required field, unparseable YAML, invalid values) |
 | `2` | Runtime startup error (port in use, etc.) |
