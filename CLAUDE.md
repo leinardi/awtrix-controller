@@ -74,7 +74,7 @@ Within a struct, place all exported methods first, then unexported (helper) meth
 - [x] WP-04 — Configuration (`internal/config/`)
 - [x] WP-05 — Client State Registry (`internal/clientstate/`)
 - [x] WP-06 — Scheduler (`internal/scheduler/`)
-- [ ] WP-07 — Day/Night Mode (`internal/daynight/`)
+- [x] WP-07 — Day/Night Mode (`internal/daynight/`)
 - [ ] WP-08 — Energy-Saving Mode (`internal/energysaving/`)
 - [ ] WP-09 — Notifications (`internal/notification/`)
 - [ ] WP-10 — Settings Composer + MQTT Broker (`internal/settings/`, `internal/broker/`)
