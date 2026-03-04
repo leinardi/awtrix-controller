@@ -59,6 +59,13 @@ func TestFoo(t *testing.T) {
 
 Caused by test functions that never call any `t.*` method. Adding `t.Parallel()` (see above) resolves this.
 
+### `funcorder` — unexported methods must follow exported methods
+
+Within a struct, place all exported methods first, then unexported (helper) methods.
+
+- Wrong: `Schedule()` → `arm()` → `Stop()`
+- Right: `Schedule()` → `Stop()` → `arm()`
+
 ## WP Status
 
 - [x] WP-01 — Module Manifest Reset
@@ -66,7 +73,7 @@ Caused by test functions that never call any `t.*` method. Adding `t.Parallel()`
 - [x] WP-03 — Logger + Clock (`internal/logger/`, `internal/clock/`)
 - [x] WP-04 — Configuration (`internal/config/`)
 - [x] WP-05 — Client State Registry (`internal/clientstate/`)
-- [ ] WP-06 — Scheduler (`internal/scheduler/`)
+- [x] WP-06 — Scheduler (`internal/scheduler/`)
 - [ ] WP-07 — Day/Night Mode (`internal/daynight/`)
 - [ ] WP-08 — Energy-Saving Mode (`internal/energysaving/`)
 - [ ] WP-09 — Notifications (`internal/notification/`)
