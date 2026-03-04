@@ -20,22 +20,6 @@ Run `go build` and `go test -race` and `make check-stage` before marking any WP 
 - **MIT license header** on every `.go` file — copy from `cmd/awtrix-controller/version.go`
 - **context7** — use `mcp__context7__resolve-library-id` + `mcp__context7__query-docs` before writing code against any third-party library
 
-## WP Status
-
-Follow PLAN.md order; never start a WP until its dependencies are complete and passing.
-
-- [x] WP-01 — Module Manifest Reset
-- [x] WP-02 — Data Models (`internal/model/`)
-- [x] WP-03 — Logger + Clock (`internal/logger/`, `internal/clock/`)
-- [x] WP-04 — Configuration (`internal/config/`)
-- [x] WP-05 — Client State Registry (`internal/clientstate/`)
-- [x] WP-06 — Scheduler (`internal/scheduler/`)
-- [x] WP-07 — Day/Night Mode (`internal/daynight/`)
-- [x] WP-08 — Energy-Saving Mode (`internal/energysaving/`)
-- [x] WP-09 — Notifications (`internal/notification/`)
-- [x] WP-10 — Settings Composer + MQTT Broker (`internal/settings/`, `internal/broker/`)
-- [ ] WP-11 — Entry Point + Wiring (`cmd/awtrix-controller/`)
-
 ## Linter Gotchas
 
 Fix these proactively — they fire on almost every WP:

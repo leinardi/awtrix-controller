@@ -30,22 +30,3 @@ import "os"
 func main() {
 	os.Exit(run())
 }
-
-// run is the application entry point called by main. It returns an exit code:
-//   - 0: clean shutdown
-//   - 1: configuration error
-//   - 2: runtime startup error (e.g. port already in use)
-//
-// All logic is implemented here (not in main) so that defer statements
-// execute before os.Exit is called.
-//
-// TODO(WP-11): implement full startup sequence, CLI flag parsing, and wiring.
-func run() int {
-	// version, commit, and date are injected via -ldflags at build time.
-	// They will be logged at startup once WP-11 is implemented.
-	_ = version
-	_ = commit
-	_ = date
-
-	return 0
-}

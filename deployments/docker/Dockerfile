@@ -57,9 +57,9 @@ FROM gcr.io/distroless/static:nonroot
 
 # hadolint ignore=DL3050
 LABEL org.opencontainers.image.title="awtrix-controller" \
-	org.opencontainers.image.description="Prometheus exporter for Docker Swarm services/tasks" \
+	org.opencontainers.image.description="Awtrix3 MQTT Controller" \
 	org.opencontainers.image.source="https://github.com/leinardi/awtrix-controller" \
-	org.opencontainers.image.licenses="Apache-2.0"
+	org.opencontainers.image.licenses="MIT"
 
 # Copy the binary and CA bundle
 COPY --from=build /out/awtrix-controller /usr/local/bin/awtrix-controller
@@ -68,8 +68,8 @@ COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Run as non-root (UID/GID 65532 in distroless)
 USER nonroot:nonroot
 
-# Document the metrics port (no EXPOSE required for security, but okay to include)
-EXPOSE 8888
+# Document the MQTT port (no EXPOSE required for security, but okay to include)
+EXPOSE 1883
 
 # Distroless has no shell; use absolute path
 ENTRYPOINT ["/usr/local/bin/awtrix-controller"]
