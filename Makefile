@@ -38,8 +38,8 @@ IMAGE_REPO   ?= $(IMAGE_NAME)
 IMAGE_TAG    ?= $(GIT_VERSION)
 
 # Drop-in runtime defaults (matches old `run`/`docker-run`)
-ARGS ?= -containers -log-level debug
-DOCKER_RUN_ARGS ?= -listen-addr 0.0.0.0:8888
+ARGS ?= --config $(REPO_ROOT)/deployments/config.sample.yaml --log-level debug
+DOCKER_RUN_ARGS ?= --config /etc/awtrix-controller/config.yaml
 
 # -----------------------------------------------------------------------------
 # Include shared make logic (fetched from make-common)

@@ -1,0 +1,75 @@
+# awtrix-controller sample configuration
+# Copy this file, fill in the required fields, and point --config at it.
+# All optional fields show their default values.
+
+# ---------------------------------------------------------------------------
+# MQTT broker (required)
+# ---------------------------------------------------------------------------
+mqtt:
+  username: awtrix # required: password Awtrix3 devices must use
+  password: changeme # required: change before deploying
+  port: 1883 # optional: TCP listen port (default: 1883)
+  # ws_port: 8883           # optional: WebSocket port; omit to disable
+
+# ---------------------------------------------------------------------------
+# Geographic location — used for sunrise/sunset calculation (required)
+# ---------------------------------------------------------------------------
+location:
+  latitude: 52.5200 # Berlin
+  longitude: 13.4050
+  # elevation: 0            # optional: metres above sea level (default: 0)
+
+# ---------------------------------------------------------------------------
+# Timezone (optional, but strongly recommended)
+# IANA timezone name — https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+# If absent the system timezone is used and a warning is logged.
+# ---------------------------------------------------------------------------
+timezone: Europe/Berlin
+
+# ---------------------------------------------------------------------------
+# Energy-saving window (optional)
+# Both times are HH:MM in the configured timezone. The window may span
+# midnight (e.g. start: "23:00" / end: "05:00").
+# ---------------------------------------------------------------------------
+energy_saving:
+  start: "00:30" # default
+  end: "06:00" # default
+
+# ---------------------------------------------------------------------------
+# Theme — colors pushed to every connected device on day/night transitions
+# All values are #RRGGBB hex strings.
+# ---------------------------------------------------------------------------
+theme:
+  day:
+    calendar_accent: "#FF0000" # calendar header + active weekday
+    content: "#FFFFFF" # text, date, inactive weekday
+  night:
+    calendar_accent: "#FF0000"
+    content: "#474747"
+
+# ---------------------------------------------------------------------------
+# Birthday notifications (optional, repeating list)
+# date_of_birth must be YYYY-MM-DD; entries with invalid dates are skipped.
+# ---------------------------------------------------------------------------
+# birthdays:
+#   - name: Alice
+#     date_of_birth: "1990-03-15"
+#     duration: 600           # seconds on screen (default: 600)
+#     icon: "14004"           # LaMetric icon ID (default: "14004")
+#     rainbow: true           # rainbow text effect (default: true)
+#     scroll_speed: 50        # px/frame (default: 50)
+#     wakeup: true            # wake display from sleep (default: true)
+#     # rtttl: ""             # optional RTTTL melody string
+#     # message: ""           # custom text; default: "Happy <age> Birthday <name>!"
+
+# ---------------------------------------------------------------------------
+# New Year notification (optional)
+# ---------------------------------------------------------------------------
+new_year:
+  enabled: true # set to false to disable
+  icon: "5855" # default
+  duration: 600 # default
+  rainbow: true # default
+  scroll_speed: 50 # default
+  wakeup: true # default
+  # message: ""             # custom text; default: "Happy New Year <year>!"
