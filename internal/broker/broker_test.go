@@ -130,8 +130,8 @@ func startBroker(
 // pahoConnect creates and connects a paho MQTT client.
 // It returns the client and a boolean indicating whether the connection succeeded.
 //
-
-func pahoConnect( //nolint:ireturn // returns paho.Client interface, which is the library's public API
+//nolint:ireturn // paho.Client is a library interface; returning the concrete type is not possible here
+func pahoConnect(
 	t *testing.T,
 	brokerAddr, clientID, username, password string,
 ) (paho.Client, bool) {

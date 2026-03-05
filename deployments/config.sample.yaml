@@ -133,8 +133,10 @@ weather:
   # heavy_rain_mm_per_15min: 5.0    # precipitation threshold for heavy rain
   # fog_visibility_warn_m: 1000.0   # visibility warning threshold
   # fog_visibility_severe_m: 200.0  # visibility severe threshold
-  # frost_temp_c: 2.0               # temperature threshold for frost risk
-  # frost_dew_point_delta_c: 2.0    # temp-dewpoint delta for frost risk
+  # frost_temp_c: 1.5               # air temperature ceiling (°C) for frost-risk warning
+  # frost_dew_point_delta_c: 1.0    # max temp-dewpoint spread (°C) for frost-risk warning
+  # frost_warn_precip_window_h: 2.0 # look-forward window (hours) for wet-surface gate
+  # frost_warn_precip_mm: 0.2       # min precipitation (mm) in window to allow warning
 
   # Per-event notification toggles (all default true except notify_fog)
   # notify_thunderstorm: true

@@ -45,6 +45,8 @@ func defaultWeatherCfg() config.WeatherConfig {
 		FogVisibilitySevereM:     200.0,
 		FrostTempC:               2.0,
 		FrostDewPointDeltaC:      2.0,
+		FrostWarnPrecipWindowH:   2.0,
+		FrostWarnPrecipMm:        0.2,
 		NotifyThunderstorm:       boolPtr(true),
 		NotifyFreezingPrecip:     boolPtr(true),
 		NotifyFrostRisk:          boolPtr(true),
@@ -170,11 +172,50 @@ func TestDetectEventsFrostRisk(t *testing.T) {
 		}
 	})
 
-	t.Run("sev1 when temp<=FrostTempC and small dewpoint delta", func(t *testing.T) {
+	t.Run(
+		"sev1 when temp<=FrostTempC and small dewpoint delta with precip in window",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// temp=1.5 <= FrostTempC=2.0; delta = 1.5 - 0.5 = 1.0 <= FrostDewPointDeltaC=2.0
+			// A second point 60 min later has precip=0.3 >= FrostWarnPrecipMm=0.2.
+			points := []weather.ForecastPoint{
+				makePoint(now, 0, 0, 0, 0, 1.5, 0.5, 5, math.NaN()),
+				makePoint(now, 60, 0, 0.3, 0, 1.5, 0.5, 5, math.NaN()),
+			}
+
+			candidates := weather.DetectEvents(points, now, cfg)
+			candidate, found := findEvent(candidates, weather.EventTypeFrostRisk)
+
+			if !found {
+				t.Fatal("expected EventTypeFrostRisk")
+			}
+
+			if candidate.Severity != 1 {
+				t.Errorf("Severity = %d, want 1", candidate.Severity)
+			}
+		},
+	)
+
+	t.Run("no warning when temp+dewDelta met but no precip in window", func(t *testing.T) {
 		t.Parallel()
 
-		// temp=1.5 <= FrostTempC=2.0; delta = 1.5 - 0.5 = 1.0 <= FrostDewPointDeltaC=2.0
-		points := []weather.ForecastPoint{makePoint(now, 0, 0, 0, 0, 1.5, 0.5, 5, math.NaN())}
+		// temp=1.0 <= 2.0; delta = 1.0 - 0.5 = 0.5 <= 2.0 — but no precip anywhere.
+		points := []weather.ForecastPoint{makePoint(now, 0, 0, 0, 0, 1.0, 0.5, 5, math.NaN())}
+
+		candidates := weather.DetectEvents(points, now, cfg)
+		_, found := findEvent(candidates, weather.EventTypeFrostRisk)
+
+		if found {
+			t.Error("expected no EventTypeFrostRisk on dry cold night")
+		}
+	})
+
+	t.Run("sev2 for freezing-drizzle WMO code with precip=0", func(t *testing.T) {
+		t.Parallel()
+
+		// WMO 56 (freezing drizzle light) — precip field is 0 due to API binning.
+		points := []weather.ForecastPoint{makePoint(now, 0, 56, 0, 0, -1, -3, 5, math.NaN())}
 
 		candidates := weather.DetectEvents(points, now, cfg)
 		candidate, found := findEvent(candidates, weather.EventTypeFrostRisk)
@@ -183,8 +224,44 @@ func TestDetectEventsFrostRisk(t *testing.T) {
 			t.Fatal("expected EventTypeFrostRisk")
 		}
 
-		if candidate.Severity != 1 {
-			t.Errorf("Severity = %d, want 1", candidate.Severity)
+		if candidate.Severity != 2 {
+			t.Errorf("Severity = %d, want 2", candidate.Severity)
+		}
+	})
+
+	t.Run("sev2 for freezing-rain WMO code with precip=0", func(t *testing.T) {
+		t.Parallel()
+
+		// WMO 66 (freezing rain light) — precip field is 0.
+		points := []weather.ForecastPoint{makePoint(now, 0, 66, 0, 0, 0, -2, 5, math.NaN())}
+
+		candidates := weather.DetectEvents(points, now, cfg)
+		candidate, found := findEvent(candidates, weather.EventTypeFrostRisk)
+
+		if !found {
+			t.Fatal("expected EventTypeFrostRisk")
+		}
+
+		if candidate.Severity != 2 {
+			t.Errorf("Severity = %d, want 2", candidate.Severity)
+		}
+	})
+
+	t.Run("sev2 for T<=0.5 and precip>=0.1", func(t *testing.T) {
+		t.Parallel()
+
+		// T=0.3 <= freezingPrecipTemp=0.5; precip=0.15 >= frostSeverePrecipMm=0.1.
+		points := []weather.ForecastPoint{makePoint(now, 0, 0, 0.15, 0, 0.3, -1, 5, math.NaN())}
+
+		candidates := weather.DetectEvents(points, now, cfg)
+		candidate, found := findEvent(candidates, weather.EventTypeFrostRisk)
+
+		if !found {
+			t.Fatal("expected EventTypeFrostRisk")
+		}
+
+		if candidate.Severity != 2 {
+			t.Errorf("Severity = %d, want 2", candidate.Severity)
 		}
 	})
 }

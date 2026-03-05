@@ -104,8 +104,16 @@ const (
 	DefaultWeatherFogVisibilitySevereM = 200.0
 
 	// DefaultWeatherFrostTempC is the temperature threshold for frost risk.
-	DefaultWeatherFrostTempC = 2.0
+	DefaultWeatherFrostTempC = 1.5
 
 	// DefaultWeatherFrostDewPointDeltaC is the temperature-dewpoint delta for frost risk.
-	DefaultWeatherFrostDewPointDeltaC = 2.0
+	DefaultWeatherFrostDewPointDeltaC = 1.0
+
+	// DefaultWeatherFrostWarnPrecipWindowH is the look-forward window (hours) used to gate
+	// frost-risk warnings: at least DefaultWeatherFrostWarnPrecipMm must fall within this window.
+	DefaultWeatherFrostWarnPrecipWindowH = 2.0
+
+	// DefaultWeatherFrostWarnPrecipMm is the minimum precipitation (mm) required within the
+	// look-forward window to allow a frost-risk warning to fire.
+	DefaultWeatherFrostWarnPrecipMm = 0.2
 )

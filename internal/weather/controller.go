@@ -39,12 +39,14 @@ import (
 const (
 	pollTimeout = 10 * time.Second
 
-	iconThunderstorm   = "63084"
-	iconFreezingPrecip = "60934"
-	iconFrostRisk      = "43125"
-	iconHeavyRain      = "22366"
+	severityColor = "#FFFF00" // yellow text for severe-level notifications
+
+	iconThunderstorm   = "49299"
+	iconFreezingPrecip = "49301"
+	iconFrostRisk      = "4807"
+	iconHeavyRain      = "49300"
 	iconStrongGusts    = "3363"
-	iconSnow           = "63083"
+	iconSnow           = "2289"
 	iconFog            = "17056"
 )
 
@@ -354,10 +356,17 @@ func (ctrl *Controller) publishCandidateTo(
 	}
 
 	repeatCount := ctrl.cfg.NotificationTextRepeat
+
+	var textColor string
+	if candidate.Severity == severitySevere {
+		textColor = severityColor
+	}
+
 	notif := &model.Notification{
 		AppContent: model.AppContent{
 			Text:   model.NewPlainText(text),
 			Icon:   icon,
+			Color:  textColor,
 			Repeat: &repeatCount,
 		},
 		Wakeup: true,
