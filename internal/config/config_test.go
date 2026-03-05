@@ -67,6 +67,8 @@ func TestNewConfigDebugView(t *testing.T) {
 			FogVisibilitySevereM:      200.0,
 			FrostTempC:                2.0,
 			FrostDewPointDeltaC:       2.0,
+			FrostWarnPrecipWindowH:    2.0,
+			FrostWarnPrecipMm:         0.2,
 			NotifyThunderstorm:        boolPtr(true),
 			NotifyFreezingPrecip:      boolPtr(true),
 			NotifyFrostRisk:           boolPtr(true),
@@ -596,6 +598,30 @@ func TestWeatherConfigDefaultsApplied(t *testing.T) {
 
 	if weather.FrostTempC != config.DefaultWeatherFrostTempC {
 		t.Errorf("FrostTempC = %v, want %v", weather.FrostTempC, config.DefaultWeatherFrostTempC)
+	}
+
+	if weather.FrostDewPointDeltaC != config.DefaultWeatherFrostDewPointDeltaC {
+		t.Errorf(
+			"FrostDewPointDeltaC = %v, want %v",
+			weather.FrostDewPointDeltaC,
+			config.DefaultWeatherFrostDewPointDeltaC,
+		)
+	}
+
+	if weather.FrostWarnPrecipWindowH != config.DefaultWeatherFrostWarnPrecipWindowH {
+		t.Errorf(
+			"FrostWarnPrecipWindowH = %v, want %v",
+			weather.FrostWarnPrecipWindowH,
+			config.DefaultWeatherFrostWarnPrecipWindowH,
+		)
+	}
+
+	if weather.FrostWarnPrecipMm != config.DefaultWeatherFrostWarnPrecipMm {
+		t.Errorf(
+			"FrostWarnPrecipMm = %v, want %v",
+			weather.FrostWarnPrecipMm,
+			config.DefaultWeatherFrostWarnPrecipMm,
+		)
 	}
 }
 

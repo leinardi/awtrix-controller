@@ -85,6 +85,8 @@ type WeatherConfig struct {
 	FogVisibilitySevereM      float64 `yaml:"fog_visibility_severe_m"`
 	FrostTempC                float64 `yaml:"frost_temp_c"`
 	FrostDewPointDeltaC       float64 `yaml:"frost_dew_point_delta_c"`
+	FrostWarnPrecipWindowH    float64 `yaml:"frost_warn_precip_window_h"`
+	FrostWarnPrecipMm         float64 `yaml:"frost_warn_precip_mm"`
 	// *bool: nil → apply default; explicit false → disable
 	NotifyThunderstorm   *bool `yaml:"notify_thunderstorm"`
 	NotifyFreezingPrecip *bool `yaml:"notify_freezing_precip"`
@@ -481,6 +483,14 @@ func applyWeatherDefaults(weather *WeatherConfig) {
 		weather.FrostDewPointDeltaC = DefaultWeatherFrostDewPointDeltaC
 	}
 
+	if weather.FrostWarnPrecipWindowH == 0 {
+		weather.FrostWarnPrecipWindowH = DefaultWeatherFrostWarnPrecipWindowH
+	}
+
+	if weather.FrostWarnPrecipMm == 0 {
+		weather.FrostWarnPrecipMm = DefaultWeatherFrostWarnPrecipMm
+	}
+
 	if weather.NotifyThunderstorm == nil {
 		weather.NotifyThunderstorm = boolPtr(true)
 	}
@@ -546,6 +556,8 @@ type ConfigDebugView struct {
 	WeatherFogVisibilitySevereM      float64
 	WeatherFrostTempC                float64
 	WeatherFrostDewPointDeltaC       float64
+	WeatherFrostWarnPrecipWindowH    float64
+	WeatherFrostWarnPrecipMm         float64
 	WeatherNotifyThunderstorm        bool
 	WeatherNotifyFreezingPrecip      bool
 	WeatherNotifyFrostRisk           bool
@@ -585,6 +597,8 @@ func NewConfigDebugView(cfg *Config) ConfigDebugView {
 		WeatherFogVisibilitySevereM:      cfg.Weather.FogVisibilitySevereM,
 		WeatherFrostTempC:                cfg.Weather.FrostTempC,
 		WeatherFrostDewPointDeltaC:       cfg.Weather.FrostDewPointDeltaC,
+		WeatherFrostWarnPrecipWindowH:    cfg.Weather.FrostWarnPrecipWindowH,
+		WeatherFrostWarnPrecipMm:         cfg.Weather.FrostWarnPrecipMm,
 		WeatherNotifyThunderstorm:        *cfg.Weather.NotifyThunderstorm,
 		WeatherNotifyFreezingPrecip:      *cfg.Weather.NotifyFreezingPrecip,
 		WeatherNotifyFrostRisk:           *cfg.Weather.NotifyFrostRisk,

@@ -128,6 +128,8 @@ func defaultCtrlCfg() config.WeatherConfig {
 		FogVisibilitySevereM:      200.0,
 		FrostTempC:                2.0,
 		FrostDewPointDeltaC:       2.0,
+		FrostWarnPrecipWindowH:    2.0,
+		FrostWarnPrecipMm:         0.2,
 		NotifyThunderstorm:        boolPtr(true),
 		NotifyFreezingPrecip:      boolPtr(true),
 		NotifyFrostRisk:           boolPtr(true),
@@ -671,6 +673,117 @@ func TestControllerOnDeviceConnectedNoPendingEvents(t *testing.T) {
 
 	if notifCount.Load() != 0 {
 		t.Errorf("notifCount = %d, want 0 (no pending events)", notifCount.Load())
+	}
+}
+
+func TestControllerSevereNotificationIsYellow(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	fakeClock := clock.NewFakeClock(now)
+
+	sched := scheduler.NewWithFactory(ctx, fakeClock, immediateFactory())
+	defer sched.Stop()
+
+	// WMO 96 is a severe thunderstorm — severity 2.
+	fetchFn := func(_ context.Context, _, _ float64, _ string) ([]weather.ForecastPoint, error) {
+		return []weather.ForecastPoint{{
+			Time: now, WeatherCode: 96,
+			Precipitation: 0, Snowfall: 0,
+			Temperature2m: 15, DewPoint2m: 10, WindGusts10m: 30,
+			Visibility: math.NaN(),
+		}}, nil
+	}
+
+	var (
+		notifMu        sync.Mutex
+		capturedColors []string
+	)
+
+	ctrl := weather.NewWithFetchFunc(
+		defaultCtrlCfg(), defaultLoc(), "UTC", fakeClock, sched,
+		fetchFn,
+		func(_ model.OverlayEffect) {},
+		func(_ string, notif *model.Notification) error {
+			notifMu.Lock()
+
+			capturedColors = append(capturedColors, notif.Color)
+			notifMu.Unlock()
+
+			return nil
+		},
+		func() []string { return []string{"device1"} },
+	)
+
+	ctrl.Start()
+
+	waitForCondition(t, func() bool {
+		notifMu.Lock()
+		defer notifMu.Unlock()
+
+		return len(capturedColors) >= 1
+	})
+
+	notifMu.Lock()
+	defer notifMu.Unlock()
+
+	if capturedColors[0] != "#FFFF00" {
+		t.Errorf("severe notification Color = %q, want %q", capturedColors[0], "#FFFF00")
+	}
+}
+
+func TestControllerWarningNotificationHasNoColor(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	fakeClock := clock.NewFakeClock(now)
+
+	sched := scheduler.NewWithFactory(ctx, fakeClock, immediateFactory())
+	defer sched.Stop()
+
+	// WMO 95 is a regular thunderstorm — severity 1 (warning).
+	fetchFn := func(_ context.Context, _, _ float64, _ string) ([]weather.ForecastPoint, error) {
+		return makeThunderstormPoints(now), nil
+	}
+
+	var (
+		notifMu        sync.Mutex
+		capturedColors []string
+	)
+
+	ctrl := weather.NewWithFetchFunc(
+		defaultCtrlCfg(), defaultLoc(), "UTC", fakeClock, sched,
+		fetchFn,
+		func(_ model.OverlayEffect) {},
+		func(_ string, notif *model.Notification) error {
+			notifMu.Lock()
+
+			capturedColors = append(capturedColors, notif.Color)
+			notifMu.Unlock()
+
+			return nil
+		},
+		func() []string { return []string{"device1"} },
+	)
+
+	ctrl.Start()
+
+	waitForCondition(t, func() bool {
+		notifMu.Lock()
+		defer notifMu.Unlock()
+
+		return len(capturedColors) >= 1
+	})
+
+	notifMu.Lock()
+	defer notifMu.Unlock()
+
+	if capturedColors[0] != "" {
+		t.Errorf("warning notification Color = %q, want empty string", capturedColors[0])
 	}
 }
 

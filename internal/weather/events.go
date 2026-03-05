@@ -78,7 +78,14 @@ const (
 	severityWarning = 1
 	severitySevere  = 2
 
-	freezingPrecipTemp = 0.0
+	// freezingPrecipTemp is the temperature ceiling (°C) for the numeric severe gate.
+	// Set slightly above 0 to account for road surfaces being colder than the 2 m air temp.
+	freezingPrecipTemp = 0.5
+
+	// frostSeverePrecipMm is the minimum precipitation (mm/15 min) required alongside a
+	// low temperature to trigger a severe frost-risk alert via the numeric gate.
+	// It acts as a noise filter for near-zero API values.
+	frostSeverePrecipMm = 0.1
 )
 
 // EventCandidate describes one detected warning in the forecast horizon.
@@ -109,7 +116,7 @@ func DetectEvents(
 			continue
 		}
 
-		checkPoint(&points[pointIdx], &cfg, firsts, severities)
+		checkPoint(pointIdx, points, &cfg, firsts, severities)
 	}
 
 	candidates := make([]EventCandidate, 0, len(firsts))
@@ -139,16 +146,19 @@ func DetectEvents(
 	return candidates
 }
 
-// checkPoint evaluates a single ForecastPoint for all event types and updates firsts/severities.
+// checkPoint evaluates a ForecastPoint for all event types and updates firsts/severities.
+// pointIdx and points are forwarded to checkers that need look-forward context.
 func checkPoint(
-	point *ForecastPoint,
+	pointIdx int,
+	points []ForecastPoint,
 	cfg *config.WeatherConfig,
 	firsts map[EventType]ForecastPoint,
 	severities map[EventType]int,
 ) {
+	point := &points[pointIdx]
 	checkThunderstorm(point, firsts, severities)
 	checkFreezingPrecip(point, firsts, severities)
-	checkFrostRisk(point, cfg, firsts, severities)
+	checkFrostRisk(pointIdx, points, cfg, firsts, severities)
 	checkHeavyRain(point, cfg, firsts, severities)
 	checkStrongGusts(point, cfg, firsts, severities)
 	checkSnow(point, firsts, severities)
@@ -208,22 +218,71 @@ func checkFreezingPrecip(
 }
 
 func checkFrostRisk(
-	point *ForecastPoint,
+	pointIdx int,
+	points []ForecastPoint,
 	cfg *config.WeatherConfig,
 	firsts map[EventType]ForecastPoint,
 	severities map[EventType]int,
 ) {
-	if point.Temperature2m <= freezingPrecipTemp && point.Precipitation > 0 {
+	point := &points[pointIdx]
+
+	// Severe: freezing-precip WMO code (precip field may be 0 due to API binning)
+	// OR numeric precip above noise threshold at near-freezing temperature.
+	if isFreezingPrecipWMOCode(point.WeatherCode) ||
+		(point.Temperature2m <= freezingPrecipTemp && point.Precipitation >= frostSeverePrecipMm) {
 		recordEvent(EventTypeFrostRisk, point, severitySevere, firsts, severities)
 
 		return
 	}
 
+	// Warning: temperature and dew-point spread indicate frost potential,
+	// but only when a wet surface is plausible (precipitation within look-forward window).
+	// dewDelta can be negative due to data quirks; that still satisfies the <= test.
 	dewDelta := point.Temperature2m - point.DewPoint2m
 
 	if point.Temperature2m <= cfg.FrostTempC && dewDelta <= cfg.FrostDewPointDeltaC {
-		recordEvent(EventTypeFrostRisk, point, severityWarning, firsts, severities)
+		windowDur := time.Duration(float64(time.Hour) * cfg.FrostWarnPrecipWindowH)
+
+		if hasPrecipInWindow(pointIdx, points, windowDur, cfg.FrostWarnPrecipMm) {
+			recordEvent(EventTypeFrostRisk, point, severityWarning, firsts, severities)
+		}
 	}
+}
+
+// isFreezingPrecipWMOCode reports whether code is a freezing drizzle or freezing rain WMO code.
+func isFreezingPrecipWMOCode(code int) bool {
+	switch code {
+	case wmoFreezingDrizzleLight, wmoFreezingDrizzleHeavy,
+		wmoFreezingRainLight, wmoFreezingRainHeavy:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasPrecipInWindow returns true if any point in [points[pointIdx].Time,
+// points[pointIdx].Time+windowDur] has Precipitation >= minPrecipMm.
+func hasPrecipInWindow(
+	pointIdx int,
+	points []ForecastPoint,
+	windowDur time.Duration,
+	minPrecipMm float64,
+) bool {
+	origin := points[pointIdx].Time
+	cutoff := origin.Add(windowDur)
+
+	for scanIdx := range points {
+		scanTime := points[scanIdx].Time
+		if scanTime.Before(origin) || scanTime.After(cutoff) {
+			continue
+		}
+
+		if points[scanIdx].Precipitation >= minPrecipMm {
+			return true
+		}
+	}
+
+	return false
 }
 
 func checkHeavyRain(
