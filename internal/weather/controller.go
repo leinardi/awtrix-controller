@@ -41,12 +41,12 @@ const (
 
 	severityColor = "#FFFF00" // yellow text for severe-level notifications
 
-	iconThunderstorm   = "63084"
-	iconFreezingPrecip = "60934"
-	iconFrostRisk      = "43125"
-	iconHeavyRain      = "22366"
+	iconThunderstorm   = "49299"
+	iconFreezingPrecip = "49301"
+	iconFrostRisk      = "4807"
+	iconHeavyRain      = "49300"
 	iconStrongGusts    = "3363"
-	iconSnow           = "63083"
+	iconSnow           = "2289"
 	iconFog            = "17056"
 )
 
