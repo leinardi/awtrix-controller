@@ -49,6 +49,7 @@ type ControllerHook struct {
 	pushSettings  func(clientID string) error
 	onDeviceReady func(clientID string)
 	readyClients  sync.Map // key: clientID string, value: struct{}
+	activeClients sync.Map // key: clientID string, value: *mqtt.Client; tracks the current session pointer
 }
 
 // NewControllerHook returns a ControllerHook configured with the given
@@ -112,6 +113,7 @@ func (*ControllerHook) OnACLCheck(_ *mqtt.Client, _ string, _ bool) bool {
 //
 //nolint:gocritic // hugeParam: packets.Packet value type is required by the mqtt.Hook interface
 func (h *ControllerHook) OnConnect(client *mqtt.Client, _ packets.Packet) error {
+	h.activeClients.Store(client.ID, client)
 	h.registry.Register(client.ID)
 	logger.L().Info("broker: client connected", "clientID", client.ID)
 
@@ -139,9 +141,22 @@ func (h *ControllerHook) OnConnect(client *mqtt.Client, _ packets.Packet) error 
 
 // OnDisconnect removes the client from the state registry and clears its
 // ready state so that a subsequent reconnect triggers onDeviceReady again.
+//
+// The unregister is guarded by a pointer check: if the client reconnected before
+// this disconnect callback fired (comqtt calls OnConnect for the new session
+// before OnDisconnect for the expired old one), the activeClients map already
+// holds the new session's pointer. Comparing it against the disconnecting client
+// pointer prevents the stale disconnect from wiping the new registration.
 func (h *ControllerHook) OnDisconnect(client *mqtt.Client, disconnectErr error, expired bool) {
-	h.readyClients.Delete(client.ID)
-	h.registry.Unregister(client.ID)
+	if currentClient, ok := h.activeClients.Load(
+		client.ID,
+	); ok &&
+		currentClient.(*mqtt.Client) == client { //nolint:forcetypeassert // activeClients only stores *mqtt.Client values via OnConnect
+		h.activeClients.Delete(client.ID)
+		h.readyClients.Delete(client.ID)
+		h.registry.Unregister(client.ID)
+	}
+
 	logger.L().Info("broker: client disconnected",
 		"clientID", client.ID,
 		"err", disconnectErr,

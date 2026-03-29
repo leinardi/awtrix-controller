@@ -325,6 +325,106 @@ func TestBrokerOnDeviceReadyTriggeredOnStats(t *testing.T) {
 	}
 }
 
+// TestBrokerStaleDisconnectDoesNotUnregister verifies that a client reconnecting
+// with the same clientID remains registered and can publish stats after the cycle
+// (TC-19).
+//
+// This guards against the race where comqtt fires OnConnect for the new session
+// before OnDisconnect for the expired old one, causing the stale disconnect to
+// wipe the newly-registered client from the registry.
+//
+//nolint:cyclop,gocyclo // test function exercises a multi-step reconnect scenario; splitting would obscure the narrative
+func TestBrokerStaleDisconnectDoesNotUnregister(t *testing.T) {
+	t.Parallel()
+
+	registry := clientstate.NewRegistry()
+
+	brokerAddr := startBroker(t, registry, func(_ string) error { return nil }, nil)
+
+	firstClient, firstConnected := pahoConnect(
+		t,
+		brokerAddr,
+		"device06",
+		testUsername,
+		testPassword,
+	)
+	if !firstConnected {
+		t.Fatal("expected first connection to succeed")
+	}
+
+	firstStats := model.Stats{Bat: 60, Lux: 200, Ram: 8000}
+
+	firstStatsJSON, firstMarshalErr := json.Marshal(firstStats)
+	if firstMarshalErr != nil {
+		t.Fatal("json.Marshal firstStats:", firstMarshalErr)
+	}
+
+	firstPubToken := firstClient.Publish("device06/stats", 1, false, firstStatsJSON)
+	if !firstPubToken.WaitTimeout(5*time.Second) || firstPubToken.Error() != nil {
+		t.Fatal("first publish stats failed:", firstPubToken.Error())
+	}
+
+	if snap, ok := registry.Snapshot("device06"); !ok || snap.Stats == nil {
+		t.Fatal("stats not stored in registry after first publish")
+	}
+
+	firstClient.Disconnect(250)
+
+	// Poll until the registry is empty so we know the clean disconnect was processed
+	// before reconnecting.
+	disconnectDeadline := time.Now().Add(2 * time.Second)
+
+	for time.Now().Before(disconnectDeadline) {
+		if len(registry.ConnectedIDs()) == 0 {
+			break
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(registry.ConnectedIDs()) != 0 {
+		t.Fatal("client not removed from registry after first disconnect")
+	}
+
+	secondClient, secondConnected := pahoConnect(
+		t,
+		brokerAddr,
+		"device06",
+		testUsername,
+		testPassword,
+	)
+	if !secondConnected {
+		t.Fatal("expected second connection to succeed")
+	}
+
+	defer secondClient.Disconnect(250)
+
+	if _, ok := registry.Snapshot("device06"); !ok {
+		t.Fatal("client not in registry immediately after reconnect")
+	}
+
+	secondStats := model.Stats{Bat: 70, Lux: 300, Ram: 12000}
+
+	secondStatsJSON, secondMarshalErr := json.Marshal(secondStats)
+	if secondMarshalErr != nil {
+		t.Fatal("json.Marshal secondStats:", secondMarshalErr)
+	}
+
+	secondPubToken := secondClient.Publish("device06/stats", 1, false, secondStatsJSON)
+	if !secondPubToken.WaitTimeout(5*time.Second) || secondPubToken.Error() != nil {
+		t.Fatal("second publish stats failed:", secondPubToken.Error())
+	}
+
+	snap, ok := registry.Snapshot("device06")
+	if !ok || snap.Stats == nil {
+		t.Fatal("stats not stored after reconnect — stale disconnect likely wiped the registration")
+	}
+
+	if snap.Stats.Bat != secondStats.Bat {
+		t.Errorf("Bat after reconnect: want %d, got %d", secondStats.Bat, snap.Stats.Bat)
+	}
+}
+
 // TestBrokerOnDeviceReadyFiredOnce verifies that the onDeviceReady callback is
 // called exactly once per connection, even when multiple stats publishes arrive (TC-18).
 func TestBrokerOnDeviceReadyFiredOnce(t *testing.T) {
