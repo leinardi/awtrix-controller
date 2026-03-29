@@ -140,7 +140,7 @@ func (f *Fetcher) Fetch(
 		return nil, fmt.Errorf("weather: build request: %w", requestErr)
 	}
 
-	response, executeErr := f.httpClient.Do( //nolint:gosec // G704: URL built from config-controlled base URL, not user input
+	response, executeErr := f.httpClient.Do(
 		request,
 	)
 	if executeErr != nil {

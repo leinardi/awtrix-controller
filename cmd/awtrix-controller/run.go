@@ -69,16 +69,17 @@ func run() int {
 // is canceled. It is extracted from run so that tests can inject a
 // cancellable context instead of sending real OS signals.
 //
-//nolint:cyclop,funlen,gocyclo,maintidx // startup wiring is inherently long; splitting would obscure the sequence
+//nolint:cyclop,funlen,gocognit,gocyclo,maintidx // startup wiring is inherently long; splitting would obscure the sequence
 func runWithContext(ctx context.Context, args []string, getenv func(string) string) int {
 	// Step 1: Parse CLI flags.
 	flagSet := flag.NewFlagSet("awtrix-controller", flag.ContinueOnError)
 
 	var (
-		configPath  string
-		logLevelStr string
-		showVersion bool
-		weatherWMO  int
+		configPath      string
+		logLevelStr     string
+		showVersion     bool
+		weatherWMO      int
+		testNotifParams testNotificationParams
 	)
 
 	flagSet.StringVar(&configPath, "config", config.DefaultConfigPath, "Path to YAML config file")
@@ -94,6 +95,7 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 	flagSet.BoolVar(&showVersion, "v", false, "Print version and exit (shorthand)")
 	flagSet.IntVar(&weatherWMO, "weather-wmo", 0,
 		"Simulate all forecast points with this WMO code (0 = disabled; debug only)")
+	registerTestNotificationFlags(flagSet, &testNotifParams)
 
 	parseErr := flagSet.Parse(args)
 	if parseErr != nil {
@@ -114,6 +116,8 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 	flagWasSet := visited["log-level"] || visited["l"]
 	logLevel := effectiveLevel(logLevelStr, getenv("AWTRIX_LOG_LEVEL"), flagWasSet)
 
+	testNotif := buildTestNotification(visited, &testNotifParams)
+
 	// Step 3: Handle --version flag.
 	if showVersion {
 		fmt.Fprintf(
@@ -129,6 +133,10 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 
 	// Step 4: Initialize structured logger.
 	logger.Init(logLevel)
+
+	if testNotif != nil {
+		logger.L().Warn("test-notification mode active — sending test notification on device ready")
+	}
 
 	// Step 5: Load and validate configuration.
 	cfg, loadErr := config.Load(configPath)
@@ -229,7 +237,11 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 	// Step 11: Controller hook.
 	// weatherCtrl is declared here so the onDeviceConnected closure can capture
 	// it by reference; it is assigned in step 14 after the controller is created.
+	// publishNotification is declared here so that onDeviceReady can capture it
+	// by reference; it is assigned after broker creation in step 12.
 	var weatherCtrl *weather.Controller
+
+	var publishNotification func(clientID string, n *model.Notification) error
 
 	onDeviceConnected := func(clientID string) error {
 		settingsErr := settings.Push(clientID, server, settingsBuilder.Build())
@@ -243,6 +255,16 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 	onDeviceReady := func(clientID string) {
 		if weatherCtrl != nil {
 			weatherCtrl.OnDeviceConnected(clientID)
+		}
+
+		if testNotif != nil {
+			testErr := publishNotification(clientID, testNotif)
+			if testErr != nil {
+				logger.L().Warn("test-notification: publish failed",
+					"clientID", clientID,
+					"err", testErr,
+				)
+			}
 		}
 	}
 
@@ -266,7 +288,7 @@ func runWithContext(ctx context.Context, args []string, getenv func(string) stri
 
 	// publishNotification marshals and publishes a transient notification to a
 	// single client on the {clientID}/notify topic (non-retained, QoS 1).
-	publishNotification := func(clientID string, n *model.Notification) error {
+	publishNotification = func(clientID string, n *model.Notification) error {
 		payload, marshalErr := json.Marshal(n)
 		if marshalErr != nil {
 			return fmt.Errorf("run: marshal notification for %s: %w", clientID, marshalErr)
