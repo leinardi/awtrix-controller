@@ -95,6 +95,9 @@ type WeatherConfig struct {
 	NotifyStrongGusts    *bool `yaml:"notify_strong_gusts"`
 	NotifySnow           *bool `yaml:"notify_snow"`
 	NotifyFog            *bool `yaml:"notify_fog"` // default false (noisier)
+	// RTTTL is an optional RTTTL melody string played with each weather notification.
+	// Empty string (the default) means no sound.
+	RTTTL string `yaml:"rtttl"`
 }
 
 // MQTTConfig holds MQTT broker settings.

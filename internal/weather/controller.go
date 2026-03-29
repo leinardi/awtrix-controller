@@ -369,6 +369,7 @@ func (ctrl *Controller) publishCandidateTo(
 			Color:  textColor,
 			Repeat: &repeatCount,
 		},
+		Rtttl:  ctrl.cfg.RTTTL,
 		Wakeup: true,
 	}
 
