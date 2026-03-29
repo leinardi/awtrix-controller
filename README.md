@@ -80,6 +80,50 @@ ghcr.io/leinardi/awtrix-controller:latest
 | `--version`     | `-v`  | -                  | -                                    | Print version and exit                                    |
 | `--weather-wmo` | -     | -                  | `0` (disabled)                       | Simulate all forecast points with a WMO code (debug only) |
 
+#### Test notification flags (debug only)
+
+Pass any combination of `--test-notification-*` flags to send a one-shot notification to
+every connected device as soon as it becomes ready. All fields are optional — only set the
+ones you want to test.
+
+| Flag                                | Type             | Description                                                           |
+|-------------------------------------|------------------|-----------------------------------------------------------------------|
+| `--test-notification-text`          | string           | Message text                                                          |
+| `--test-notification-icon`          | string           | LaMetric icon ID                                                      |
+| `--test-notification-duration`      | int              | Display duration in seconds                                           |
+| `--test-notification-rainbow`       | bool             | Cycle rainbow colors on the text                                      |
+| `--test-notification-scroll-speed`  | int              | Scroll speed in pixels per frame                                      |
+| `--test-notification-no-scroll`     | bool             | Display text statically (no scroll)                                   |
+| `--test-notification-color`         | string           | Text color as hex, e.g. `#FF0000`                                     |
+| `--test-notification-background`    | string           | Background fill color as hex                                          |
+| `--test-notification-overlay`       | string           | Weather overlay: `clear\|snow\|rain\|drizzle\|storm\|thunder\|frost`  |
+| `--test-notification-effect`        | string           | Background animation name, e.g. `Plasma`                              |
+| `--test-notification-blink-text`    | int              | Blink rate in milliseconds                                            |
+| `--test-notification-fade-text`     | int              | Fade rate in milliseconds                                             |
+| `--test-notification-text-case`     | int              | `0`=global `1`=uppercase `2`=as-is                                    |
+| `--test-notification-top-text`      | bool             | Display text at the top of the matrix                                 |
+| `--test-notification-text-offset`   | int              | Horizontal text offset in pixels                                      |
+| `--test-notification-push-icon`     | int              | Icon behavior: `0`=static `1`=scroll `2`=fixed                        |
+| `--test-notification-center`        | `true\|false\|"` | Center text (`""` = use device default)                               |
+| `--test-notification-hold`          | bool             | Keep notification visible until dismissed                             |
+| `--test-notification-sound`         | string           | Sound file name on the device filesystem                              |
+| `--test-notification-rtttl`         | string           | RTTTL melody string to play                                           |
+| `--test-notification-loop-sound`    | bool             | Loop sound while the notification is displayed                        |
+| `--test-notification-stack`         | `true\|false\|"` | Queue behind current notification (`""` = use device default)         |
+| `--test-notification-wakeup`        | bool             | Wake the display from sleep before showing                            |
+| `--test-notification-repeat`        | `int\|""`        | Scroll repeat count (`-1`=infinite; `""` = use device default)        |
+
+Example — test an overlay with an RTTTL melody:
+
+```bash
+dist/awtrix-controller --config deployments/config.sample.yaml \
+  --test-notification-text "Thunderstorm!" \
+  --test-notification-overlay thunder \
+  --test-notification-rtttl "Batman:d=16,o=5,b=180:8p,8b,8b,8b,2e." \
+  --test-notification-icon "1234" \
+  --test-notification-duration 30
+```
+
 ## Configuration overview
 
 See [`deployments/config.sample.yaml`](deployments/config.sample.yaml) for the full annotated example. Required fields are marked below.
