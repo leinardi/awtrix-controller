@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/mstephenholl/go-solar v1.0.1
-	github.com/wind-c/comqtt/v2 v2.6.2
+	github.com/wind-c/comqtt/v2 v2.6.4
 	gopkg.in/yaml.v3 v3.0.1
 )
 
