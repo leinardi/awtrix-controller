@@ -3,10 +3,10 @@
 ########################
 # deps: cache modules
 ########################
-FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS deps
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1-alpine3.23-dev AS deps
 WORKDIR /src
 RUN --mount=type=cache,target=/var/cache/apk \
-	apk add --no-cache ca-certificates git
+	apk add --no-cache git
 COPY go.mod go.sum ./
 # Use a named cache so we can reuse it in the build stage (no COPY needed)
 RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
 ########################
 # build: compile static binary
 ########################
-FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS build
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1-alpine3.23-dev AS build
 ARG VERSION="dev"
 ARG COMMIT="none"
 ARG DATE="unknown"
@@ -29,8 +29,6 @@ ENV CGO_ENABLED=0 \
     GOARCH=${TARGETARCH}
 
 WORKDIR /src
-RUN --mount=type=cache,target=/var/cache/apk \
-	apk add --no-cache ca-certificates
 
 # Bring in source
 COPY . .
@@ -43,17 +41,10 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
 		-o /out/awtrix-controller ./cmd/awtrix-controller
 
 ########################
-# certs: minimal CA bundle
+# runtime: dhi.io hardened static base (distroless-style, no shell).
+# The daemon binary is CGO_ENABLED=0 so no libc is required.
 ########################
-FROM --platform=$BUILDPLATFORM alpine:3.23.4 AS certs
-RUN --mount=type=cache,target=/var/cache/apk \
-	apk add --no-cache ca-certificates
-# leave at /etc/ssl/certs/ca-certificates.crt
-
-########################
-# runtime: distroless static nonroot
-########################
-FROM gcr.io/distroless/static:nonroot
+FROM dhi.io/static:20250419
 
 # hadolint ignore=DL3050
 LABEL org.opencontainers.image.title="awtrix-controller" \
@@ -61,15 +52,12 @@ LABEL org.opencontainers.image.title="awtrix-controller" \
 	org.opencontainers.image.source="https://github.com/leinardi/awtrix-controller" \
 	org.opencontainers.image.licenses="MIT"
 
-# Copy the binary and CA bundle
+# Copy the binary
 COPY --from=build /out/awtrix-controller /usr/local/bin/awtrix-controller
-COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Run as non-root (UID/GID 65532 in distroless)
-USER nonroot:nonroot
+# dhi.io/static defaults to a non-root user; the exporter does not need root.
 
-# Document the MQTT port (no EXPOSE required for security, but okay to include)
+# Document the MQTT port
 EXPOSE 1883
 
-# Distroless has no shell; use absolute path
 ENTRYPOINT ["/usr/local/bin/awtrix-controller"]

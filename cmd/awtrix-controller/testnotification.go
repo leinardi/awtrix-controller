@@ -32,6 +32,11 @@ import (
 	"github.com/leinardi/awtrix-controller/internal/model"
 )
 
+const (
+	boolTrue  = "true"
+	boolFalse = "false"
+)
+
 // testNotificationParams holds the raw flag values for the --test-notification-* group.
 // All fields default to their zero values; use the visited map to distinguish
 // "flag was set" from "flag was left at its default".
@@ -265,11 +270,11 @@ func hasTestNotificationFlag(visited map[string]bool) bool {
 // "true" → &true, "false" → &false, anything else → nil.
 func parseBoolPtr(value string) *bool {
 	switch value {
-	case "true":
+	case boolTrue:
 		result := true
 
 		return &result
-	case "false":
+	case boolFalse:
 		result := false
 
 		return &result

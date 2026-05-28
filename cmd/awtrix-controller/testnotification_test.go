@@ -144,7 +144,7 @@ func TestBuildTestNotification_TC_BoolPtrCenter_True(t *testing.T) {
 	t.Parallel()
 
 	visited := map[string]bool{"test-notification-center": true}
-	params := testNotificationParams{center: "true"}
+	params := testNotificationParams{center: boolTrue}
 
 	result := buildTestNotification(visited, &params)
 
@@ -171,7 +171,7 @@ func TestBuildTestNotification_TC_BoolPtrCenter_False(t *testing.T) {
 	t.Parallel()
 
 	visited := map[string]bool{"test-notification-center": true}
-	params := testNotificationParams{center: "false"}
+	params := testNotificationParams{center: boolFalse}
 
 	result := buildTestNotification(visited, &params)
 
@@ -274,7 +274,7 @@ func TestBuildTestNotification_TC_StackPtr(t *testing.T) {
 	t.Parallel()
 
 	visited := map[string]bool{"test-notification-stack": true}
-	params := testNotificationParams{stack: "false"}
+	params := testNotificationParams{stack: boolFalse}
 
 	result := buildTestNotification(visited, &params)
 
