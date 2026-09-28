@@ -20,20 +20,20 @@ to directly. Once a device connects, the controller:
 
 ## Key features
 
-| Feature                 | Details                                                                  |
-|-------------------------|--------------------------------------------------------------------------|
-| Embedded MQTT broker    | TCP (default 1883) + optional WebSocket port                             |
-| Day/night mode          | Sunrise/sunset calculated from configured coordinates                    |
-| Energy-saving window    | Configurable HH:MM window, may span midnight                             |
-| Theme management        | Day/night color sets pushed to every connected device                    |
-| Scheduled notifications | `daily` / `weekly` / `monthly` / `yearly` recurrence                     |
-| Weather overlays        | Open-Meteo forecast → overlay effect on all devices                      |
-| Severe-weather alerts   | Push notifications for thunderstorm, frost, heavy rain, gusts, snow, fog |
-| Multi-arch Docker image | `linux/amd64` and `linux/arm64` via GHCR                                 |
+| Feature | Details |
+| --- | --- |
+| Embedded MQTT broker | TCP (default 1883) + optional WebSocket port |
+| Day/night mode | Sunrise/sunset calculated from configured coordinates |
+| Energy-saving window | Configurable HH:MM window, may span midnight |
+| Theme management | Day/night color sets pushed to every connected device |
+| Scheduled notifications | `daily` / `weekly` / `monthly` / `yearly` recurrence |
+| Weather overlays | Open-Meteo forecast → overlay effect on all devices |
+| Severe-weather alerts | Push notifications for thunderstorm, frost, heavy rain, gusts, snow, fog |
+| Multi-arch Docker image | `linux/amd64` and `linux/arm64` via GHCR |
 
 ## Requirements
 
-- Go 1.25+ (for building from source)
+- Go 1.26+ (for building from source)
 - Docker (for the container image)
 - Awtrix3 firmware configured to connect to this broker's hostname/IP
 
@@ -73,12 +73,12 @@ ghcr.io/leinardi/awtrix-controller:latest
 
 ### CLI flags
 
-| Flag            | Short | Env var            | Default                              | Description                                               |
-|-----------------|-------|--------------------|--------------------------------------|-----------------------------------------------------------|
-| `--config`      | `-c`  | `AWTRIX_CONFIG`    | `/etc/awtrix-controller/config.yaml` | Path to YAML config file                                  |
-| `--log-level`   | `-l`  | `AWTRIX_LOG_LEVEL` | `info`                               | Verbosity: `debug\|info\|warn\|error`                     |
-| `--version`     | `-v`  | -                  | -                                    | Print version and exit                                    |
-| `--weather-wmo` | -     | -                  | `0` (disabled)                       | Simulate all forecast points with a WMO code (debug only) |
+| Flag | Short | Env var | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | `-c` | `AWTRIX_CONFIG` | `/etc/awtrix-controller/config.yaml` | Path to YAML config file |
+| `--log-level` | `-l` | `AWTRIX_LOG_LEVEL` | `info` | Verbosity: `debug\|info\|warn\|error` |
+| `--version` | `-v` | - | - | Print version and exit |
+| `--weather-wmo` | - | - | `0` (disabled) | Simulate all forecast points with a WMO code (debug only) |
 
 #### Test notification flags (debug only)
 
@@ -86,32 +86,32 @@ Pass any combination of `--test-notification-*` flags to send a one-shot notific
 every connected device as soon as it becomes ready. All fields are optional — only set the
 ones you want to test.
 
-| Flag                                | Type             | Description                                                           |
-|-------------------------------------|------------------|-----------------------------------------------------------------------|
-| `--test-notification-text`          | string           | Message text                                                          |
-| `--test-notification-icon`          | string           | LaMetric icon ID                                                      |
-| `--test-notification-duration`      | int              | Display duration in seconds                                           |
-| `--test-notification-rainbow`       | bool             | Cycle rainbow colors on the text                                      |
-| `--test-notification-scroll-speed`  | int              | Scroll speed in pixels per frame                                      |
-| `--test-notification-no-scroll`     | bool             | Display text statically (no scroll)                                   |
-| `--test-notification-color`         | string           | Text color as hex, e.g. `#FF0000`                                     |
-| `--test-notification-background`    | string           | Background fill color as hex                                          |
-| `--test-notification-overlay`       | string           | Weather overlay: `clear\|snow\|rain\|drizzle\|storm\|thunder\|frost`  |
-| `--test-notification-effect`        | string           | Background animation name, e.g. `Plasma`                              |
-| `--test-notification-blink-text`    | int              | Blink rate in milliseconds                                            |
-| `--test-notification-fade-text`     | int              | Fade rate in milliseconds                                             |
-| `--test-notification-text-case`     | int              | `0`=global `1`=uppercase `2`=as-is                                    |
-| `--test-notification-top-text`      | bool             | Display text at the top of the matrix                                 |
-| `--test-notification-text-offset`   | int              | Horizontal text offset in pixels                                      |
-| `--test-notification-push-icon`     | int              | Icon behavior: `0`=static `1`=scroll `2`=fixed                        |
-| `--test-notification-center`        | `true\|false\|"` | Center text (`""` = use device default)                               |
-| `--test-notification-hold`          | bool             | Keep notification visible until dismissed                             |
-| `--test-notification-sound`         | string           | Sound file name on the device filesystem                              |
-| `--test-notification-rtttl`         | string           | RTTTL melody string to play                                           |
-| `--test-notification-loop-sound`    | bool             | Loop sound while the notification is displayed                        |
-| `--test-notification-stack`         | `true\|false\|"` | Queue behind current notification (`""` = use device default)         |
-| `--test-notification-wakeup`        | bool             | Wake the display from sleep before showing                            |
-| `--test-notification-repeat`        | `int\|""`        | Scroll repeat count (`-1`=infinite; `""` = use device default)        |
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--test-notification-text` | string | Message text |
+| `--test-notification-icon` | string | LaMetric icon ID |
+| `--test-notification-duration` | int | Display duration in seconds |
+| `--test-notification-rainbow` | bool | Cycle rainbow colors on the text |
+| `--test-notification-scroll-speed` | int | Scroll speed in pixels per frame |
+| `--test-notification-no-scroll` | bool | Display text statically (no scroll) |
+| `--test-notification-color` | string | Text color as hex, e.g. `#FF0000` |
+| `--test-notification-background` | string | Background fill color as hex |
+| `--test-notification-overlay` | string | Weather overlay: `clear\|snow\|rain\|drizzle\|storm\|thunder\|frost` |
+| `--test-notification-effect` | string | Background animation name, e.g. `Plasma` |
+| `--test-notification-blink-text` | int | Blink rate in milliseconds |
+| `--test-notification-fade-text` | int | Fade rate in milliseconds |
+| `--test-notification-text-case` | int | `0`=global `1`=uppercase `2`=as-is |
+| `--test-notification-top-text` | bool | Display text at the top of the matrix |
+| `--test-notification-text-offset` | int | Horizontal text offset in pixels |
+| `--test-notification-push-icon` | int | Icon behavior: `0`=static `1`=scroll `2`=fixed |
+| `--test-notification-center` | `true\|false\|"` | Center text (`""` = use device default) |
+| `--test-notification-hold` | bool | Keep notification visible until dismissed |
+| `--test-notification-sound` | string | Sound file name on the device filesystem |
+| `--test-notification-rtttl` | string | RTTTL melody string to play |
+| `--test-notification-loop-sound` | bool | Loop sound while the notification is displayed |
+| `--test-notification-stack` | `true\|false\|"` | Queue behind current notification (`""` = use device default) |
+| `--test-notification-wakeup` | bool | Wake the display from sleep before showing |
+| `--test-notification-repeat` | `int\|""` | Scroll repeat count (`-1`=infinite; `""` = use device default) |
 
 Example — test an overlay with an RTTTL melody:
 
@@ -254,12 +254,16 @@ make go-build && make go-test && make check
 
 ## CI / Release
 
-- **CI** (`.github/workflows/ci.yaml`): runs on every pull request - actionlint,
-  pre-commit hooks (golangci-lint, hadolint, dclint, …), markdownlint, shellcheck,
-  yamllint.
-- **Release** (`.github/workflows/release.yaml`): triggered manually with a semver
-  string. Builds static binaries for `linux/amd64` and `linux/arm64`, pushes a
-  multi-arch Docker image to GHCR, and creates a GitHub Release with checksums.
+- **CI** (`.github/workflows/ci.yaml`): on every pull request, the tests with the race detector, a govulncheck scan, the
+  pre-commit hooks (golangci-lint, hadolint, dclint, …), markdownlint, shellcheck, yamllint, and a Conventional Commits check of
+  every commit.
+- **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version derived from the commits when
+  left empty. It builds static binaries for `linux/amd64` and `linux/arm64` and a multi-arch image, scans the image with Trivy
+  before tagging, then publishes the image to GHCR with provenance and a cosign signature, and the GitHub release with checksums.
+  See [docs/release.md](docs/release.md).
+- **Scheduled scan** (`.github/workflows/scheduled-scan.yaml`): the latest image and the Go dependencies, every week.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## License
 
