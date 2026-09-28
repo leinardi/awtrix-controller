@@ -191,9 +191,6 @@ func (fac *capturingFactory) FirstDuration() time.Duration {
 
 // ── shared helpers ────────────────────────────────────────────────────────────
 
-// floatPtr returns a pointer to the given float64 value.
-func floatPtr(v float64) *float64 { return &v }
-
 // normalSunriseFunc returns a SunriseFunc that sets sunrise at 06:00 and
 // sunset at 20:00 each day in the given timezone.
 func normalSunriseFunc(timezone *time.Location) daynight.SunriseFunc {
@@ -212,8 +209,8 @@ func neverRisesFunc(_, _ float64, _ time.Time) (rise, set time.Time, ok bool) {
 // newTestLoc builds a config.LocationConfig for test use.
 func newTestLoc() config.LocationConfig {
 	return config.LocationConfig{
-		Latitude:  floatPtr(48.0),
-		Longitude: floatPtr(11.0),
+		Latitude:  new(48.0),
+		Longitude: new(11.0),
 	}
 }
 

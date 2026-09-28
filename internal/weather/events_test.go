@@ -33,8 +33,6 @@ import (
 	"github.com/leinardi/awtrix-controller/internal/weather"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 func defaultWeatherCfg() config.WeatherConfig {
 	return config.WeatherConfig{
 		NotificationHorizonHours: 8,
@@ -47,13 +45,13 @@ func defaultWeatherCfg() config.WeatherConfig {
 		FrostDewPointDeltaC:      2.0,
 		FrostWarnPrecipWindowH:   2.0,
 		FrostWarnPrecipMm:        0.2,
-		NotifyThunderstorm:       boolPtr(true),
-		NotifyFreezingPrecip:     boolPtr(true),
-		NotifyFrostRisk:          boolPtr(true),
-		NotifyHeavyRain:          boolPtr(true),
-		NotifyStrongGusts:        boolPtr(true),
-		NotifySnow:               boolPtr(true),
-		NotifyFog:                boolPtr(true),
+		NotifyThunderstorm:       new(true),
+		NotifyFreezingPrecip:     new(true),
+		NotifyFrostRisk:          new(true),
+		NotifyHeavyRain:          new(true),
+		NotifyStrongGusts:        new(true),
+		NotifySnow:               new(true),
+		NotifyFog:                new(true),
 	}
 }
 
@@ -435,7 +433,7 @@ func TestDetectEventsDisabledType(t *testing.T) {
 
 	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	cfg := defaultWeatherCfg()
-	cfg.NotifyThunderstorm = boolPtr(false)
+	cfg.NotifyThunderstorm = new(false)
 
 	points := []weather.ForecastPoint{makePoint(now, 0, 95, 0, 0, 10, 5, 20, math.NaN())}
 

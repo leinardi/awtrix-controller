@@ -143,8 +143,6 @@ func (cf *controllableFactory) TriggerNext() bool {
 
 // ── config helpers ────────────────────────────────────────────────────────────
 
-func boolPtr(value bool) *bool { return &value }
-
 // newBirthdayNotifConfig returns a yearly scheduled notification for a birthday.
 // date is "MM-DD" format (e.g. "04-16").
 func newBirthdayNotifConfig(date, name string) config.ScheduledNotificationConfig {
@@ -156,10 +154,10 @@ func newBirthdayNotifConfig(date, name string) config.ScheduledNotificationConfi
 		Time:        "00:00",
 		Duration:    600,
 		Icon:        "14004",
-		Rainbow:     boolPtr(true),
+		Rainbow:     new(true),
 		ScrollSpeed: 50,
-		Wakeup:      boolPtr(true),
-		Enabled:     boolPtr(true),
+		Wakeup:      new(true),
+		Enabled:     new(true),
 	}
 }
 
@@ -173,10 +171,10 @@ func newNewYearNotifConfig(enabled bool) config.ScheduledNotificationConfig {
 		Time:        "00:00",
 		Duration:    600,
 		Icon:        "5855",
-		Rainbow:     boolPtr(true),
+		Rainbow:     new(true),
 		ScrollSpeed: 50,
-		Wakeup:      boolPtr(true),
-		Enabled:     boolPtr(enabled),
+		Wakeup:      new(true),
+		Enabled:     new(enabled),
 	}
 }
 
@@ -224,10 +222,10 @@ func newWeeklyNotifConfig(name string, weekdays []string) config.ScheduledNotifi
 		Time:        "10:00",
 		Duration:    60,
 		Icon:        "609",
-		Rainbow:     boolPtr(false),
+		Rainbow:     new(false),
 		ScrollSpeed: 50,
-		Wakeup:      boolPtr(true),
-		Enabled:     boolPtr(true),
+		Wakeup:      new(true),
+		Enabled:     new(true),
 	}
 }
 

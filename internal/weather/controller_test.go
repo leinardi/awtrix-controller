@@ -130,13 +130,13 @@ func defaultCtrlCfg() config.WeatherConfig {
 		FrostDewPointDeltaC:       2.0,
 		FrostWarnPrecipWindowH:    2.0,
 		FrostWarnPrecipMm:         0.2,
-		NotifyThunderstorm:        boolPtr(true),
-		NotifyFreezingPrecip:      boolPtr(true),
-		NotifyFrostRisk:           boolPtr(true),
-		NotifyHeavyRain:           boolPtr(true),
-		NotifyStrongGusts:         boolPtr(true),
-		NotifySnow:                boolPtr(true),
-		NotifyFog:                 boolPtr(true),
+		NotifyThunderstorm:        new(true),
+		NotifyFreezingPrecip:      new(true),
+		NotifyFrostRisk:           new(true),
+		NotifyHeavyRain:           new(true),
+		NotifyStrongGusts:         new(true),
+		NotifySnow:                new(true),
+		NotifyFog:                 new(true),
 	}
 }
 
@@ -464,7 +464,7 @@ func TestControllerNoNotifyWhenDisabled(t *testing.T) {
 	defer sched.Stop()
 
 	cfg := defaultCtrlCfg()
-	cfg.NotifyThunderstorm = boolPtr(false)
+	cfg.NotifyThunderstorm = new(false)
 
 	var (
 		overlayCalled atomic.Bool

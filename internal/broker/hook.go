@@ -31,11 +31,12 @@ import (
 	"strings"
 	"sync"
 
+	mqtt "github.com/wind-c/comqtt/v2/mqtt"
+	"github.com/wind-c/comqtt/v2/mqtt/packets"
+
 	"github.com/leinardi/awtrix-controller/internal/clientstate"
 	"github.com/leinardi/awtrix-controller/internal/logger"
 	"github.com/leinardi/awtrix-controller/internal/model"
-	mqtt "github.com/wind-c/comqtt/v2/mqtt"
-	"github.com/wind-c/comqtt/v2/mqtt/packets"
 )
 
 // ControllerHook is a comqtt hook that handles authentication, client-state

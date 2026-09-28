@@ -298,7 +298,7 @@ func TestBuildTestNotification_TC_StackPtr(t *testing.T) {
 // TestBuildTestNotification_TC_FullNotification verifies that all simple fields are
 // populated correctly when all flags are visited.
 //
-//nolint:cyclop,gocyclo // each assertion checks one notification field; extraction would not reduce real complexity
+
 func TestBuildTestNotification_TC_FullNotification(t *testing.T) {
 	t.Parallel()
 

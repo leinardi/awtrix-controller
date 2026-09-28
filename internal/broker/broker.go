@@ -29,10 +29,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/leinardi/awtrix-controller/internal/config"
-	"github.com/leinardi/awtrix-controller/internal/logger"
 	mqtt "github.com/wind-c/comqtt/v2/mqtt"
 	"github.com/wind-c/comqtt/v2/mqtt/listeners"
+
+	"github.com/leinardi/awtrix-controller/internal/config"
+	"github.com/leinardi/awtrix-controller/internal/logger"
 )
 
 // newServerMu serializes calls to mqtt.New to avoid a data race in comqtt's
