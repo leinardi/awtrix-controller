@@ -33,12 +33,6 @@ import (
 	"github.com/leinardi/awtrix-controller/internal/model"
 )
 
-// ptr returns a pointer to the given int value.
-func ptr(v int) *int { return &v }
-
-// ptrBool returns a pointer to the given bool value.
-func ptrBool(v bool) *bool { return &v }
-
 // mustMarshal marshals v to JSON and fails the test on error.
 func mustMarshal(t *testing.T, v any) []byte {
 	t.Helper()
@@ -78,7 +72,7 @@ func TestSettingsBriAbsentWhenNil(t *testing.T) {
 func TestSettingsBriPresentWhenSet(t *testing.T) {
 	t.Parallel()
 
-	jsonData := mustMarshal(t, model.Settings{Bri: ptr(1)})
+	jsonData := mustMarshal(t, model.Settings{Bri: new(1)})
 
 	if !strings.Contains(string(jsonData), `"BRI":1`) {
 		t.Errorf("expected BRI:1 in output; got %s", jsonData)
@@ -102,7 +96,7 @@ func TestSettingsAbriAbsentWhenNil(t *testing.T) {
 func TestSettingsAbriFalsePresentWhenPointerSet(t *testing.T) {
 	t.Parallel()
 
-	jsonData := mustMarshal(t, model.Settings{Abri: ptrBool(false)})
+	jsonData := mustMarshal(t, model.Settings{Abri: new(false)})
 
 	if !strings.Contains(string(jsonData), `"ABRI":false`) {
 		t.Errorf("expected ABRI:false in output; got %s", jsonData)
@@ -694,7 +688,7 @@ func TestCenterFalsePresentWhenPointerSet(t *testing.T) {
 
 	jsonData := mustMarshal(
 		t,
-		model.Notification{AppContent: model.AppContent{Center: ptrBool(false)}},
+		model.Notification{AppContent: model.AppContent{Center: new(false)}},
 	)
 
 	if !strings.Contains(string(jsonData), `"center":false`) {
@@ -710,7 +704,7 @@ func TestAutoscaleFalsePresentWhenPointerSet(t *testing.T) {
 
 	jsonData := mustMarshal(
 		t,
-		model.Notification{AppContent: model.AppContent{Autoscale: ptrBool(false)}},
+		model.Notification{AppContent: model.AppContent{Autoscale: new(false)}},
 	)
 
 	if !strings.Contains(string(jsonData), `"autoscale":false`) {
@@ -724,7 +718,7 @@ func TestAutoscaleFalsePresentWhenPointerSet(t *testing.T) {
 func TestStackFalsePresentWhenPointerSet(t *testing.T) {
 	t.Parallel()
 
-	jsonData := mustMarshal(t, model.Notification{Stack: ptrBool(false)})
+	jsonData := mustMarshal(t, model.Notification{Stack: new(false)})
 
 	if !strings.Contains(string(jsonData), `"stack":false`) {
 		t.Errorf("expected stack:false in output; got %s", jsonData)
@@ -737,7 +731,7 @@ func TestStackFalsePresentWhenPointerSet(t *testing.T) {
 func TestProgressZeroPresentWhenPointerSet(t *testing.T) {
 	t.Parallel()
 
-	jsonData := mustMarshal(t, model.Notification{AppContent: model.AppContent{Progress: ptr(0)}})
+	jsonData := mustMarshal(t, model.Notification{AppContent: model.AppContent{Progress: new(0)}})
 
 	if !strings.Contains(string(jsonData), `"progress":0`) {
 		t.Errorf("expected progress:0 in output; got %s", jsonData)
@@ -750,7 +744,7 @@ func TestProgressZeroPresentWhenPointerSet(t *testing.T) {
 func TestRepeatZeroPresentWhenPointerSet(t *testing.T) {
 	t.Parallel()
 
-	jsonData := mustMarshal(t, model.Notification{AppContent: model.AppContent{Repeat: ptr(0)}})
+	jsonData := mustMarshal(t, model.Notification{AppContent: model.AppContent{Repeat: new(0)}})
 
 	if !strings.Contains(string(jsonData), `"repeat":0`) {
 		t.Errorf("expected repeat:0 in output; got %s", jsonData)

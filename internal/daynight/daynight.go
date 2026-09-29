@@ -32,11 +32,12 @@ import (
 	"sync"
 	"time"
 
+	solar "github.com/mstephenholl/go-solar"
+
 	"github.com/leinardi/awtrix-controller/internal/clock"
 	"github.com/leinardi/awtrix-controller/internal/config"
 	"github.com/leinardi/awtrix-controller/internal/logger"
 	"github.com/leinardi/awtrix-controller/internal/scheduler"
-	solar "github.com/mstephenholl/go-solar"
 )
 
 // Mode represents the current day/night state.

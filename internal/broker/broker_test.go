@@ -33,6 +33,7 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+
 	"github.com/leinardi/awtrix-controller/internal/broker"
 	"github.com/leinardi/awtrix-controller/internal/clientstate"
 	"github.com/leinardi/awtrix-controller/internal/config"
@@ -333,7 +334,7 @@ func TestBrokerOnDeviceReadyTriggeredOnStats(t *testing.T) {
 // before OnDisconnect for the expired old one, causing the stale disconnect to
 // wipe the newly-registered client from the registry.
 //
-//nolint:cyclop,gocyclo // test function exercises a multi-step reconnect scenario; splitting would obscure the narrative
+
 func TestBrokerStaleDisconnectDoesNotUnregister(t *testing.T) {
 	t.Parallel()
 

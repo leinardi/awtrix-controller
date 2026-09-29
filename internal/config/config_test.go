@@ -34,8 +34,6 @@ import (
 	"github.com/leinardi/awtrix-controller/internal/config"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestNewConfigDebugView(t *testing.T) {
 	t.Parallel()
 
@@ -69,13 +67,13 @@ func TestNewConfigDebugView(t *testing.T) {
 			FrostDewPointDeltaC:       2.0,
 			FrostWarnPrecipWindowH:    2.0,
 			FrostWarnPrecipMm:         0.2,
-			NotifyThunderstorm:        boolPtr(true),
-			NotifyFreezingPrecip:      boolPtr(true),
-			NotifyFrostRisk:           boolPtr(true),
-			NotifyHeavyRain:           boolPtr(true),
-			NotifyStrongGusts:         boolPtr(true),
-			NotifySnow:                boolPtr(true),
-			NotifyFog:                 boolPtr(false),
+			NotifyThunderstorm:        new(true),
+			NotifyFreezingPrecip:      new(true),
+			NotifyFrostRisk:           new(true),
+			NotifyHeavyRain:           new(true),
+			NotifyStrongGusts:         new(true),
+			NotifySnow:                new(true),
+			NotifyFog:                 new(false),
 		},
 	}
 
@@ -693,7 +691,7 @@ func TestWeatherConfigNotifyDefaultsTrue(t *testing.T) {
 // TestLoadScheduledNotifications covers filtering (bad repeat/date skipped)
 // and default application.
 //
-//nolint:gocyclo,cyclop // multiple sub-tests each with several assertions
+
 func TestLoadScheduledNotifications(t *testing.T) {
 	t.Parallel()
 

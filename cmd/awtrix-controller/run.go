@@ -35,6 +35,8 @@ import (
 	"syscall"
 	"time"
 
+	mqtt "github.com/wind-c/comqtt/v2/mqtt"
+
 	"github.com/leinardi/awtrix-controller/internal/broker"
 	"github.com/leinardi/awtrix-controller/internal/clientstate"
 	"github.com/leinardi/awtrix-controller/internal/clock"
@@ -47,7 +49,6 @@ import (
 	"github.com/leinardi/awtrix-controller/internal/scheduler"
 	"github.com/leinardi/awtrix-controller/internal/settings"
 	"github.com/leinardi/awtrix-controller/internal/weather"
-	mqtt "github.com/wind-c/comqtt/v2/mqtt"
 )
 
 // run is the application entry point called by main. It returns an exit code:

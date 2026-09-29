@@ -32,12 +32,13 @@ import (
 	"fmt"
 	"sync"
 
+	mqtt "github.com/wind-c/comqtt/v2/mqtt"
+
 	"github.com/leinardi/awtrix-controller/internal/config"
 	"github.com/leinardi/awtrix-controller/internal/daynight"
 	"github.com/leinardi/awtrix-controller/internal/energysaving"
 	"github.com/leinardi/awtrix-controller/internal/logger"
 	"github.com/leinardi/awtrix-controller/internal/model"
-	mqtt "github.com/wind-c/comqtt/v2/mqtt"
 )
 
 // Builder composes a partial model.Settings from the current day/night mode,

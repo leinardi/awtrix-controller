@@ -33,8 +33,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/leinardi/awtrix-controller/internal/logger"
 	"gopkg.in/yaml.v3"
+
+	"github.com/leinardi/awtrix-controller/internal/logger"
 )
 
 // Sentinel errors returned by Validate for individual field constraint violations.
@@ -404,7 +405,7 @@ func applyScheduledNotificationDefaults(entry *ScheduledNotificationConfig) {
 	}
 
 	if entry.Enabled == nil {
-		entry.Enabled = boolPtr(true)
+		entry.Enabled = new(true)
 	}
 
 	if entry.Duration == 0 {
@@ -416,7 +417,7 @@ func applyScheduledNotificationDefaults(entry *ScheduledNotificationConfig) {
 	}
 
 	if entry.Rainbow == nil {
-		entry.Rainbow = boolPtr(false)
+		entry.Rainbow = new(false)
 	}
 
 	if entry.ScrollSpeed == 0 {
@@ -424,7 +425,7 @@ func applyScheduledNotificationDefaults(entry *ScheduledNotificationConfig) {
 	}
 
 	if entry.Wakeup == nil {
-		entry.Wakeup = boolPtr(true)
+		entry.Wakeup = new(true)
 	}
 }
 
@@ -495,31 +496,31 @@ func applyWeatherDefaults(weather *WeatherConfig) {
 	}
 
 	if weather.NotifyThunderstorm == nil {
-		weather.NotifyThunderstorm = boolPtr(true)
+		weather.NotifyThunderstorm = new(true)
 	}
 
 	if weather.NotifyFreezingPrecip == nil {
-		weather.NotifyFreezingPrecip = boolPtr(true)
+		weather.NotifyFreezingPrecip = new(true)
 	}
 
 	if weather.NotifyFrostRisk == nil {
-		weather.NotifyFrostRisk = boolPtr(true)
+		weather.NotifyFrostRisk = new(true)
 	}
 
 	if weather.NotifyHeavyRain == nil {
-		weather.NotifyHeavyRain = boolPtr(true)
+		weather.NotifyHeavyRain = new(true)
 	}
 
 	if weather.NotifyStrongGusts == nil {
-		weather.NotifyStrongGusts = boolPtr(true)
+		weather.NotifyStrongGusts = new(true)
 	}
 
 	if weather.NotifySnow == nil {
-		weather.NotifySnow = boolPtr(true)
+		weather.NotifySnow = new(true)
 	}
 
 	if weather.NotifyFog == nil {
-		weather.NotifyFog = boolPtr(false)
+		weather.NotifyFog = new(false)
 	}
 }
 
@@ -626,6 +627,3 @@ func isValidHexColor(s string) bool {
 
 	return true
 }
-
-// boolPtr returns a pointer to the given bool value.
-func boolPtr(b bool) *bool { return &b }
