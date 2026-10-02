@@ -7,7 +7,7 @@
 ########################
 # deps: cache modules
 ########################
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:e248fe1cc163930de8df06e96241f29430998f088b981e479f00e1d6dc47f38c AS deps
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:16da8d3c0c7a8276fee2196e3ba764d73c3db22f13cc2dc3a6799e8c0dcf9fe6 AS deps
 WORKDIR /src
 RUN --mount=type=cache,target=/var/cache/apk \
 	apk add --no-cache git
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
 ########################
 # build: compile static binary
 ########################
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:e248fe1cc163930de8df06e96241f29430998f088b981e479f00e1d6dc47f38c AS build
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:16da8d3c0c7a8276fee2196e3ba764d73c3db22f13cc2dc3a6799e8c0dcf9fe6 AS build
 ARG VERSION="dev"
 ARG COMMIT="none"
 ARG DATE="unknown"
