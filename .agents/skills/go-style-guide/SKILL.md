@@ -1,24 +1,25 @@
 ---
 name: go-style-guide
 description: >
-  Project Go style rules enforced by golangci-lint v2 (all linters) + pre-commit, the
-  maintainer's own rules (descriptive names, no builtin shadowing, t.Parallel, method
-  order, exhaustive enum switches, no inline errors, unnamed stateless receivers), and
-  this controller's patterns (clock and scheduler injection, timezones, MQTT publishing,
-  concurrency). Apply when writing, editing, or reviewing any .go file in this repo.
-  Consult before generating Go code, not after lint fails.
+  Go coding rules for awtrix-controller: the golangci-lint v2 (default: all)
+  settings and how to satisfy them, the maintainer's own rules (descriptive names,
+  no builtin shadowing, t.Parallel, method order, exhaustive enum switches, no
+  inline errors, unnamed stateless receivers), the helpers to reuse, and the
+  controller's patterns (clock and scheduler injection, timezones, MQTT publishing,
+  concurrency). Use when writing, editing or reviewing any .go file in
+  awtrix-controller — consult it before generating Go code, not after lint fails.
 ---
 
 # Go Style Guide — awtrix-controller
 
 Rules derived from `.golangci.yaml` (golangci-lint v2, `default: all`) and verified
-against the existing codebase in `cmd/` and `internal/`. §1–§15 are what the linters
-enforce, §16 are the maintainer's rules, §17–§19 are review rules, and §20–§23 are this
+against the existing codebase in `cmd/` and `internal/`. §1–§11 are what the linters
+enforce, §12 are the maintainer's rules, §13–§15 are review rules, and §16–§19 are this
 controller's own patterns.
 
-golangci-lint is not on `PATH` in every environment; run it through pre-commit
-(`pre-commit run golangci-lint-full --all-files`). Never commit with `--no-verify` —
-fix the underlying issue instead.
+golangci-lint is not on `PATH` in every environment; run it through pre-commit (see
+*Lint and test loop* at the end). Never commit with `--no-verify` — fix the underlying
+issue instead.
 
 Linters that are **disabled** in `.golangci.yaml`, so their rules do not apply:
 
@@ -30,7 +31,7 @@ Linters that are **disabled** in `.golangci.yaml`, so their rules do not apply:
 | `nonamedreturns` | Named returns are allowed (`SunriseFunc`'s `rise, set, ok`) |
 | `wsl` | The deprecated v4 linter; its successor `wsl_v5` stays enabled |
 
-Beyond the generic test-file exclusions (§4, §5, §8, §11, §13, §15), three are specific to
+Beyond the generic test-file exclusions (§4, §5, §9, §11), three are specific to
 this repo: `paralleltest` for `internal/logger/logger_test.go`, `tagliatelle` for
 `internal/config/config.go` (YAML keys are snake_case on purpose) and `gosec` G117 for the
 same file (the MQTT password field is read from the user's config, not hardcoded).
@@ -42,27 +43,12 @@ The formatters (`gci`, `gofmt`, `gofumpt`, `goimports`, `golines`) run in the
 
 ## 1. Import grouping
 
-Three groups, separated by blank lines — enforced by both `gci` (explicit
-`sections: standard, default, prefix(github.com/leinardi/awtrix-controller)`) and
-`goimports` (`local-prefixes: github.com/leinardi/awtrix-controller`) simultaneously, and
-they must agree. From `internal/daynight/daynight.go`:
+Three groups separated by blank lines — stdlib, third-party, then local
+`github.com/leinardi/awtrix-controller/...` — alphabetical within each group. `gci` and
+`goimports` both enforce it and the `golangci-lint-fmt` hook rewrites it.
 
-```go
-import (
-    "sync"
-    "time"
-
-    solar "github.com/mstephenholl/go-solar"
-
-    "github.com/leinardi/awtrix-controller/internal/clock"
-    "github.com/leinardi/awtrix-controller/internal/config"
-    "github.com/leinardi/awtrix-controller/internal/logger"
-    "github.com/leinardi/awtrix-controller/internal/scheduler"
-)
-```
-
-comqtt is always imported as `mqtt "github.com/wind-c/comqtt/v2/mqtt"`; the paho client in
-the broker tests as `paho`.
+Aliases: comqtt is always imported as `mqtt "github.com/wind-c/comqtt/v2/mqtt"`, the paho
+client in the broker tests as `paho`, and `github.com/mstephenholl/go-solar` as `solar`.
 
 ---
 
@@ -70,7 +56,7 @@ the broker tests as `paho`.
 
 ### 2a. No inline error assignment in `if` (`noinlineerr`)
 
-Separate statements, and a name unique to the call (§16). From `broker.New`:
+Separate statements, and a name unique to the call (§12). From `broker.New`:
 
 ```go
 // Wrong
@@ -89,7 +75,7 @@ tcpErr := server.AddListener(tcpListener)
 
 Wrap with a short lowercase prefix naming the operation; most packages outside `config` start
 it with the package name (`"broker: add TCP listener on %s: %w"`, `"settings: publish to %s: %w"`,
-`"weather: decode response: %w"`). Compare with `errors.Is`/`errors.As` (or Go 1.26's
+`"weather: decode response: %w"`). Compare with `errors.Is`/`errors.As` (or the generic
 `errors.AsType[T]`), never `==`. Prefer early returns; no `else` after a `return`
 (`revive`'s `indent-error-flow`).
 
@@ -103,15 +89,15 @@ return nil, fmt.Errorf("weather: HTTP %d: %w", response.StatusCode, errHTTPError
 return fmt.Errorf("calendar_accent %q: %w", colors.CalendarAccent, ErrInvalidHexColor)
 ```
 
-Export it (`ErrMQTTUsernameRequired`) when callers need `errors.Is`. The
-`//nolint:err113 // dynamic message includes …` directives in `internal/model/draw.go`
-predate this rule: dynamic detail is exactly what wrapping a sentinel carries, so do not
-copy them.
+Export it (`ErrMQTTUsernameRequired`) when callers need `errors.Is`. A
+`//nolint:err113 // dynamic message includes …` directive (`internal/model/draw.go` has
+some) is not a pattern: dynamic detail is exactly what wrapping a sentinel carries, so do
+not copy it.
 
 ### 2d. Aggregating multiple errors
 
-Use `errors.Join` over wrapped errors. No code here aggregates today: `config.Validate`
-returns the first violation.
+Default: `errors.Join` over a slice of wrapped errors. The exception is `config.Validate`,
+which returns the first violation.
 
 ### 2e. Ignoring errors explicitly
 
@@ -129,7 +115,7 @@ cannot be acted upon is assigned to `_`.
 - **Explanation required**: every directive needs `// reason`
 - **No unused**: remove directives when the code no longer triggers that linter
 
-The explanation says why the fix does not apply here, not which rule fired (§18).
+The explanation says why the fix does not apply here, not which rule fired (§14).
 
 ```go
 // Inline, for a statement:
@@ -144,7 +130,7 @@ func (h *ControllerHook) OnConnectAuthenticate(_ *mqtt.Client, packet packets.Pa
 ```
 
 `nolintlint` cannot see a directive for a disabled linter, so it never reports one as
-unused: do not write them (`//nolint:gochecknoglobals` on `newServerMu` is one).
+unused: do not write them, and drop one you find on a line you touch.
 
 ---
 
@@ -174,13 +160,7 @@ to their use (`wmoThunderstorm = 95`, `fetchTimeout = 10 * time.Second`, `daysIn
 
 ---
 
-## 6. Type aliases
-
-Use `any` instead of `interface{}`; `gofmt`'s rewrite rule changes it anyway.
-
----
-
-## 7. Struct size (`gocritic hugeParam`)
+## 6. Struct size (`gocritic hugeParam`)
 
 Structs over ~80 bytes passed by value trigger `hugeParam`. Pass by pointer — or suppress
 with the reason when an interface fixes the signature (the comqtt hook methods take
@@ -189,13 +169,7 @@ with the reason when an interface fixes the signature (the comqtt hook methods t
 
 ---
 
-## 8. Line length (`lll`)
-
-Max 140 characters. `golines` wraps automatically. Test files are exempt.
-
----
-
-## 9. Forbidden packages (`depguard`)
+## 7. Forbidden packages (`depguard`)
 
 | Forbidden | Use instead |
 | --- | --- |
@@ -205,40 +179,27 @@ Max 140 characters. `golines` wraps automatically. Test files are exempt.
 
 ---
 
-## 10. Comments and `godox`
+## 8. Comments and `godox`
 
 - `FIXME` is flagged by `godox`. `TODO` is allowed.
 - gocritic's `whyNoLint` check is disabled, but every `//nolint` still needs an explanation.
 - Every exported symbol has a doc comment beginning with its name, and every package has a
-  package comment (`// Package clock defines the Clock interface …`). Keep it that way.
+  package comment (`// Package clock defines the Clock interface …`).
 - Large files are divided with `// --- Section name ---` separators (`// --- validation
   helpers ---`, `// --- RealClock ---`).
 - Do not add comments to code you did not otherwise change.
 
 ---
 
-## 11. Duplication (`dupl`)
-
-Avoid copy-pasting blocks longer than ~100 tokens (`threshold: 100`). Test files are exempt.
-
----
-
-## 12. Shadowing (`govet shadow`)
-
-`govet` shadow detection is enabled. Errors are named after their source (§16):
-`hookErr`, `tcpErr`, `wsErr`, `dnStartErr`, `esStartErr`, `pushErr`, `publishErr`.
-
----
-
-## 13. Variable naming (`varnamelen`, `predeclared`)
+## 9. Variable naming (`varnamelen`, `predeclared`)
 
 `varnamelen` flags a name shorter than 3 characters whose last use is more than 5 lines from
 its declaration (defaults: `min-name-length: 3`, `max-distance: 5`); test files are exempt.
 Receivers are exempt (`(ctrl *Controller)`, `(sched *Scheduler)`, `(h *ControllerHook)`).
-`predeclared` flags any name that shadows a builtin. §16 goes further than both.
+`predeclared` flags any name that shadows a builtin. §12 goes further than both.
 
 ```go
-// Wrong (energysaving.parseHHMM today; rename it when you touch it)
+// Wrong
 func parseHHMM(s string) (time.Duration, error)
 
 // Right
@@ -247,11 +208,11 @@ func parseWeekday(weekdayStr string) (time.Weekday, error)
 
 ---
 
-## 14. `modernize` — no pointer-boxing helpers
+## 10. `modernize` — no pointer-boxing helpers
 
 The `modernize` linter (`newexpr` check) flags any function whose sole purpose is to return a
-pointer to its argument — the generic `func ptr[T any](v T) *T` included. Go 1.26's `new`
-takes an expression:
+pointer to its argument — the generic `func ptr[T any](v T) *T` included. The Go version in
+`go.mod` lets `new` take an expression:
 
 ```go
 if entry.Enabled == nil {
@@ -263,15 +224,19 @@ Taking the address of a local is fine too (`result.Bri = &brightnessValue` in `s
 
 ---
 
-## 15. Constant strings (`goconst`)
+## 11. Other thresholds
 
-String literals appearing 3+ times with length ≥ 2 become a named constant. Test files are
-exempt. Examples: the icon IDs (`iconThunderstorm`, …) in `internal/weather/controller.go`,
-the defaults in `internal/config/defaults.go`.
+| Rule | Setting | What to do |
+| --- | --- | --- |
+| `any` (`gofmt` rewrite rule) | `interface{}` → `any` | Write `any`; the formatter rewrites it anyway |
+| `lll` | 140 characters | `golines` wraps automatically; test files are exempt |
+| `dupl` | 100 tokens | Extract shared logic into a helper; test files are exempt |
+| `govet` shadow | enabled | Name errors after their source (§12): `hookErr`, `tcpErr`, `wsErr`, `pushErr`, `publishErr` |
+| `goconst` | 3+ occurrences, length ≥ 2 | Extract a named constant: the icon IDs (`iconThunderstorm`, …) in `internal/weather/controller.go`, the defaults in `internal/config/defaults.go`. Test files are exempt |
 
 ---
 
-## 16. Maintainer rules
+## 12. Maintainer rules
 
 These hold for all Go code here, tests included. Where a linter enforces one it is named;
 the rest are review rules.
@@ -309,7 +274,7 @@ the rest are review rules.
 
 ---
 
-## 17. Reuse before writing
+## 13. Reuse before writing
 
 | Need | Use | Not |
 | --- | --- | --- |
@@ -324,12 +289,12 @@ the rest are review rules.
 | A weekday name | `parseWeekday` | a second switch |
 | A `#RRGGBB` check | `isValidHexColor` (`internal/config`) | a regexp |
 | A scheduler in a test | `scheduler.NewWithFactory` with the package's fake factory (`makeFakeFactory`, `makeControllableFactory`, `makeCapturingFactory`, `immediateFactory`) | real timers; and not a new copy of a factory the package already has |
-| Waiting in a test | `waitForCondition` (`internal/weather`), `waitForBroker` (`internal/broker`) | `time.Sleep` or another deadline loop (§19) |
+| Waiting in a test | `waitForCondition` (`internal/weather`), `waitForBroker` (`internal/broker`) | `time.Sleep` or another deadline loop (§15) |
 | A broker in a test | `startBroker`, `pahoConnect`, `freePort` (`internal/broker/broker_test.go`) | a per-test setup |
 
 ---
 
-## 18. Comments carry rationale; history goes in the commit
+## 14. Comments carry rationale; history goes in the commit
 
 A comment says **why the code is the way it is**; history belongs in the commit body.
 
@@ -348,7 +313,7 @@ The same rule makes `//nolint` explanations useful: say why the fix does not app
 
 ---
 
-## 19. Waiting in tests: classify before you write a sleep
+## 15. Waiting in tests: classify before you write a sleep
 
 Controllers take a `clock.Clock` and a `scheduler.TimerFactory` so tests control time
 without sleeping; use them. When a test still has to wait, decide the class first:
@@ -363,15 +328,19 @@ without sleeping; use them. When a test still has to wait, decide the class firs
 - **Ordering barrier with no quiescence signal** — say why no seam exists.
 - **Poll tick inside a wait helper** (`waitForCondition`, `waitForBroker`) — already correct.
 
-Known follow-up, not to be added to: the hand-rolled deadline loops in
-`TestBrokerDisconnect` and `TestBrokerStaleDisconnectDoesNotUnregister`; the cleanup sleep in
-`startBroker`, where `Serve` returning is observable; and the 10–20 ms sleeps in
-`TestControllerPollFetchError`, `TestControllerOnDeviceConnectedStale` and
-`TestControllerOnDeviceConnectedNoPendingEvents`, which do not say which class they are.
+A new test uses the shape its class dictates. When you touch a test that has an unclassified
+sleep or a hand-rolled deadline loop, convert it or add the comment that names its class.
+
+Known unconverted sites (verify before relying on it; remove an entry once fixed, never add one):
+the hand-rolled deadline loops in `TestBrokerDisconnect` and
+`TestBrokerStaleDisconnectDoesNotUnregister`; the cleanup sleep in `startBroker`, where `Serve`
+returning is observable; and the 10–20 ms sleeps in `TestControllerPollFetchError`,
+`TestControllerOnDeviceConnectedStale` and `TestControllerOnDeviceConnectedNoPendingEvents`,
+which do not say which class they are.
 
 ---
 
-## 20. Project layout, naming, license header
+## 16. Project layout, naming, license header
 
 ```text
 awtrix-controller/
@@ -399,34 +368,34 @@ awtrix-controller/
 
 ---
 
-## 21. Logging
+## 17. Logging
 
 - `log/slog` only, through `logger.L()`; `run` calls `logger.Init(level)` once.
 - Structured key/value fields, never `fmt.Sprintf` in a log call:
   `logger.L().Warn("failed to push settings to client", "clientID", clientID, "err", pushErr)`.
 - Messages are prefixed with the package (`"broker: client connected"`, `"weather: fetch
-  failed; clearing overlay"`). The client key is `"clientID"` (the scheduled notifier's
-  `"client_id"` is the odd one out; do not copy it).
+  failed; clearing overlay"`). The client key is `"clientID"`; do not copy a `"client_id"`
+  key you find elsewhere.
 - Never log the MQTT password: `config.NewConfigDebugView` omits it on purpose.
 - There is no fatal level: `runWithContext` returns an exit code (1 config, 2 startup).
 
 ---
 
-## 22. Time, timezones and scheduling
+## 18. Time, timezones and scheduling
 
 - Controllers read time from their `clock.Clock` and arm timers only through
   `scheduler.Scheduler`; `Scheduler.Stop` cancels pending timers and waits for in-flight
   callbacks, so a timer outside it escapes shutdown.
 - Compute fire times in the configured `*time.Location` and build them with `time.Date(…,
   hour, minute, …, loc)`, as the `next…Occurrence` helpers do; the result is strictly after
-  `from`. Adding a `time.Duration` to local midnight (`energysaving.nextOccurrence`) is off
-  by an hour on DST-change days; do not copy it.
+  `from`. Adding a `time.Duration` to local midnight is off by an hour on DST-change days;
+  do not copy it from `energysaving.nextOccurrence`.
 - `time.Date` normalizes overflow: day 31 in a 30-day month or `02-29` in a non-leap year
   lands in the next month. Code that relies on it says so.
 
 ---
 
-## 23. Concurrency
+## 19. Concurrency
 
 - Shared state sits behind a `sync.Mutex`/`RWMutex` with the unlock deferred or on the next
   line, and readers get copies (`Registry.ConnectedIDs`; `Registry.Snapshot` is shallow, so the
@@ -441,16 +410,16 @@ awtrix-controller/
 
 ## What to avoid
 
-- logrus or `pkg/errors` (§9).
+- logrus or `pkg/errors` (§7).
 - `log.Fatal` or `os.Exit` outside `main`: `main` calls `os.Exit(run())` once.
-- `time.Now()`, `time.AfterFunc` or `time.Sleep` in controller code (§17, §22).
-- A short or builtin-shadowing name (§16).
-- `interface{}` (§6) and pointer-boxing helpers (§14).
+- `time.Now()`, `time.AfterFunc` or `time.Sleep` in controller code (§13, §18).
+- A short or builtin-shadowing name (§12).
+- `interface{}` (§11) and pointer-boxing helpers (§10).
 - A `//nolint` for a disabled linter, or one whose reason restates the rule (§3).
 - Designing for hypothetical requirements: no configurability or abstractions for features
   that do not exist yet.
 - Skipping or suppressing pre-commit hooks (`--no-verify`).
-- Adding comments to code you did not change (§10).
+- Adding comments to code you did not change (§8).
 
 ---
 
@@ -468,6 +437,14 @@ awtrix-controller/
 - [ ] Numbers other than 0–3 extracted to named constants (non-test code)
 - [ ] Each `//nolint` names specific linters and explains why the fix does not apply
 - [ ] Function statement count ≤ 50 (non-test code); no `FIXME`
-- [ ] Checked §17 for an existing helper; time from `clock.Clock`, timers from the scheduler
+- [ ] Checked §13 for an existing helper; time from `clock.Clock`, timers from the scheduler
 - [ ] Fire times built with `time.Date` in the configured location
-- [ ] Comments say why, not what changed (§18); no guessed `time.Sleep` in tests (§19)
+- [ ] Comments say why, not what changed (§14); no guessed `time.Sleep` in tests (§15)
+
+## Lint and test loop
+
+1. Run `pre-commit run golangci-lint-fmt --files <changed .go files>` and
+   `pre-commit run golangci-lint-full --files <changed .go files>` (or `--all-files`).
+2. Run `make go-build`, `make go-vet` and `make go-test`.
+3. Fix each report and re-run from step 1 until all of them are clean.
+4. Check `git status`: the formatter hook rewrites files in place, so review and keep its changes.
