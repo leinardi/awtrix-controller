@@ -1,15 +1,16 @@
 ---
 name: adversarial-review
 description: >
-  Adversarial code review of a set of changes to this repo — working tree, staged
-  diff, a branch vs main, a commit range, or a PR. Language-agnostic (Go, bash,
-  Dockerfile, Makefile, YAML, docs). Loads go-style-guide for Go paths, hunts for real
-  defects and violations of this controller's invariants (MQTT broker auth and hooks,
-  client state across reconnects, scheduling and timezones, config validation, the
-  settings and notifications pushed to devices), then reports ranked findings. Use
-  whenever the user asks to review changes/a diff/a PR/a branch, "check my work before
-  committing", "is this ready to merge", or "poke holes in this" — even if they don't
-  name a language or say the word "review".
+  Adversarial code review of changes to awtrix-controller — working tree, staged
+  diff, a branch vs main, a commit range, or a PR — in any language (Go, bash,
+  Dockerfile, Makefile, YAML, docs). Loads go-style-guide for Go paths, hunts for
+  real defects and violations of the controller's invariants (MQTT broker auth and
+  hooks, client state across reconnects, scheduling and timezones, config
+  validation, the settings and notifications pushed to devices), then reports
+  ranked findings with a verdict. Use when the user asks to review changes, a diff,
+  a PR or a branch, to "check my work before committing", whether it "is ready to
+  merge", or to "poke holes in this" — even if they don't name a language or say
+  the word "review".
 ---
 
 # Adversarial Review — awtrix-controller
@@ -19,16 +20,25 @@ bug, breaks an invariant, or drifts from a contract. Your job is to find the spe
 input, state, or path where it fails — not to praise it, not to restyle it. A review that
 finds nothing is only credible after you have actively tried to break the code and failed.
 
-This skill is the **entry point for reviewing any change in this repo, in any language**.
-It does not replace the domain skills — it routes to them. The domain skills own the rules;
-this skill owns the mindset, the routing, and the report.
+Copy this checklist and tick items as you go:
+
+```text
+Review progress:
+- [ ] 1. Scope chosen; diff, stated intent and every changed file read in full
+- [ ] 2. `go-style-guide` loaded for the Go paths
+- [ ] 3. Repo invariants checked
+- [ ] 4. Adversarial passes run; every candidate confirmed or dropped
+- [ ] 5. Always-on passes (a)–(e) run
+- [ ] 6. Gates run; `git status` checked for hook rewrites; skipped gates marked unverified
+- [ ] 7. Report written: findings, open questions, verdict, gates run and not run
+```
 
 ---
 
 ## 1. Establish the diff (what am I reviewing?)
 
 Never review from memory or from the user's description of the change — read the actual
-diff. Pick the scope from what the user said, defaulting to the most useful:
+diff. Pick the scope from what the user said:
 
 | User intent | Command |
 | --- | --- |
@@ -38,6 +48,9 @@ diff. Pick the scope from what the user said, defaulting to the most useful:
 | a specific commit range | `git diff <base>..<head>` |
 | a GitHub PR number | `gh pr view <n>` for intent, then `gh pr diff <n>` |
 
+If the user names no scope, review the uncommitted work (first row); if the tree is
+clean, review the branch against `main` (third row).
+
 Also read `git log --oneline` for the range and any linked issue/PR body — the stated
 **intent** is what you check the code against. A change that works but does something other
 than what it claims is a finding.
@@ -46,18 +59,12 @@ Read every changed file in full, not just the hunks. For non-trivial changes, al
 callers, implementations, tests and docs of what changed — found with a reference search, not
 assumed from the diff: a signature or behavior change is only safe if every call site agrees.
 
-## 2. Route to the domain skills (path → authority)
+## 2. Load the domain skill
 
-For each changed path, load the matching skill **before** judging that file — violations
-there are findings even when lint is green. Load only what the diff touches.
-
-| Changed path | Load skill | It owns |
-| --- | --- | --- |
-| any `**/*.go` | `go-style-guide` | lint rules, the maintainer's rules (names, builtins, `t.Parallel`, method order, enum switches, receivers), helpers to reuse, time and scheduling patterns |
-
-No skill matches (Dockerfile, compose, `Makefile`, `.mk/*.mk`, workflows, other YAML, bash,
-Markdown)? Fall back to §4 plus the invariants in §3. **Same rigor** — an unmatched language
-is not a lighter review.
+For any `**/*.go` path, load `go-style-guide` before judging it; its rules (the maintainer's
+rules included) are findings even when lint is green. Every other path (Dockerfile, compose,
+`Makefile`, `.mk/*.mk`, workflows, other YAML, bash, Markdown) gets the passes in §4 plus the
+invariants in §3 with the **same rigor** — an unmatched language is not a lighter review.
 
 ## 3. Repo invariants — check these on every review, whatever changed
 
@@ -69,9 +76,10 @@ These are the ways this controller breaks that generic reviewers miss.
   `ControllerHook.OnConnectAuthenticate` accepts a CONNECT only when both match exactly.
 - comqtt ORs its hooks: a connection is accepted if **any** hook providing
   `OnConnectAuthenticate` returns true, and a publish or subscribe if any hook providing
-  `OnACLCheck` does. `ControllerHook` is the only hook today. Adding a hook that allows (comqtt's
-  allow-all auth hook included), or making `OnConnectAuthenticate` return true on any other
-  path, opens the broker: **critical**.
+  `OnACLCheck` does. `ControllerHook` must stay the only hook that provides them (check the
+  `AddHook` calls in `broker.New`). Adding a hook that allows (comqtt's allow-all auth hook
+  included), or making `OnConnectAuthenticate` return true on any other path, opens the
+  broker: **critical**.
 - `OnACLCheck` allows every topic to every authenticated client, by design: all devices share
   one credential. A change that relies on one device being unable to read or publish another's
   topics is wrong.
@@ -89,8 +97,9 @@ These are the ways this controller breaks that generic reviewers miss.
 - `readyClients` makes `onDeviceReady` fire once per connection, on the first `…/stats`
   publish, and is cleared on disconnect so a reconnect fires it again.
 - Hook work runs off the broker's goroutine: the connect-time settings push in a goroutine
-  that recovers panics, `onDeviceReady` in a goroutine (without a recover today). Blocking I/O
-  inside a hook stalls the broker.
+  that recovers panics, `onDeviceReady` in a goroutine. Known gap (verify before relying on
+  it): the `onDeviceReady` goroutine does not recover panics. Blocking I/O inside a hook stalls
+  the broker.
 - The registry is keyed by MQTT client ID, and the code uses that ID as the device's topic
   prefix (`{clientID}/settings`); entries are removed on disconnect. `OnPublish` routes by topic
   suffix and records state under the publishing client's ID, never the topic's prefix.
@@ -118,7 +127,8 @@ These are the ways this controller breaks that generic reviewers miss.
   fire, so each must have exactly one job. A second `Schedule` for the same controller, a
   skipped fire or a double fire inverts the mode until restart.
 - Fire times are wall-clock times in the configured location, strictly after `from`. Known
-  gaps: `energysaving.nextOccurrence` adds a duration to local midnight, so on a DST-change
+  gaps (verify before relying on them): `energysaving.nextOccurrence` adds a duration to local
+  midnight, so on a DST-change
   day the boundary is an hour off; monthly days 29–31 and yearly `02-29` roll into the next
   month through `time.Date`. With no `timezone`, day/night, energy saving and scheduled
   notifications use the system zone (`time.Local`) but the weather controller uses `UTC`.
@@ -129,7 +139,8 @@ These are the ways this controller breaks that generic reviewers miss.
 
 `config.Load` → `Validate` rejects missing MQTT credentials, a missing latitude or longitude,
 an unknown IANA timezone and a malformed theme color; `run` exits `1` on a config error and `2`
-when startup fails. What does **not** fail today, and must not be assumed to:
+when startup fails. What does **not** fail (verify before relying on it), and must not be
+assumed to:
 
 - An invalid scheduled notification is skipped with a warning, not rejected.
 - `energy_saving.start`/`end` are only defaulted by `Validate`; a malformed value fails in
@@ -160,33 +171,20 @@ replaces the fetch with a simulation for debugging.
   signed before it is tagged `:<version>`. Trivy exceptions live only in `.trivyignore`, with a
   reason and an `exp:` date.
 - Every workflow starts at `permissions: contents: read`; actions are pinned to a full commit
-  SHA. Commits are Conventional Commits with a scope (`conventional-pre-commit
-  --force-scope`); the type decides the release bump.
+  SHA.
+- The commit type decides the release bump (`svu`): check that it matches whether the change
+  should ship.
 
 ## 4. Adversarial passes — language-agnostic
 
 Do not skim for style. Run these passes, each with a "how would I make this fail" framing:
 
-- **Correctness / logic**: off-by-one, inverted conditions (`<` vs `<=`), wrong operator
-  precedence, negated guards, early returns that skip cleanup, copy-paste that kept the old
-  variable. Trace one concrete failing input end to end rather than asserting "looks fine".
-- **Boundaries & nil/empty**: empty slice/map/string, zero, negative, missing key, `nil`
-  receiver/pointer, unset optional, first/last element, single-element collection, nil and
-  empty treated as the same thing where they mean different things.
-- **Aliasing**: a returned slice or map that shares its backing store with internal state, so
-  a caller's write changes it; an `append` onto a slice another owner still holds.
-- **Errors**: swallowed errors, `err` checked then ignored, wrapped-but-not-returned, `%v`
-  where `%w` was needed so `errors.Is`/`errors.As` stop matching, wrong sentinel, panics on
-  attacker- or user-controlled input, partial writes left on the error path.
-- **Concurrency**: shared state without a lock, lock held across I/O or a channel op, goroutine
-  leak, context not honored, map written from two goroutines, TOCTOU between check and use.
-- **Resources**: unclosed file/conn/response body, an ignored `Close` error on a write, missing
-  `defer`, context/timer leak, unbounded growth, work inside a loop that belongs outside it.
+- **Generic passes**: correctness and logic, boundaries and nil/empty, aliasing, error
+  handling, concurrency, resources and security. For each, name one concrete failing input and
+  trace it end to end rather than asserting "looks fine".
 - **Time**: a boundary at midnight, a DST change, a date that does not exist every month or
   year, a timer that fires late or twice, a clock read with `time.Now()` instead of the
   injected `clock.Clock`.
-- **Security**: input reaching a command/path/query without validation, auth check missing or
-  after the effect, secret in a log, unsafe deserialization, missing size limits.
 - **Contract drift**: does the code do what the commit message / PR / issue claims? A flag,
   environment variable, config key, topic, payload field, exit code or error text changed
   without updating every consumer and the docs (§5 (e)).
@@ -195,8 +193,13 @@ Do not skim for style. Run these passes, each with a "how would I make this fail
   behavior they produced, or that was weakened/deleted to make the change pass — all findings.
   A bug fix with no regression test is a gap worth flagging.
 
-Prefer one confirmed, reproducible defect over ten vague "consider"s. If you cannot name the
-input and the resulting wrong behavior, it is not yet a finding — keep digging or drop it.
+For each candidate defect:
+
+1. Reproduce it with a focused test, or trace one concrete input through the code to the wrong
+   result.
+2. Confirmed: it is a finding. Record the input and the wrong behavior.
+3. Not confirmed: dig once more (callers, tests, config path). Still not confirmed: drop it.
+   A vague "consider" is not a finding.
 
 ## 5. Always-on passes
 
@@ -224,7 +227,8 @@ which spec line retires this surface, and does it change in this diff? If none, 
 
 Any new `//nolint:`, `# shellcheck disable=` or `# hadolint ignore=` must explain why the fix
 does not apply: for a complexity rule, what broke when the extraction was tried; for
-`varnamelen`, why the name has to be short (§16 of `go-style-guide` says it should not be). A
+`varnamelen`, why the name has to be short (the *Maintainer rules* in `go-style-guide` say it
+should not be). A
 reason that restates the rule, or no reason, is a finding; so is a directive for a disabled
 linter. The same holds for a new exclusion in `.golangci.yaml`, and an exclusion, enable or
 setting there that matches nothing in this repo.
@@ -232,7 +236,7 @@ setting there that matches nothing in this repo.
 ### (d) Cross-file duplication
 
 Before accepting a new helper, search `internal/**` and `cmd/**` for the one that already
-exists, by *behavior*. `go-style-guide` §17 lists them (clock, scheduler, next-occurrence
+exists, by *behavior*. The *Reuse before writing* table in `go-style-guide` lists them (clock, scheduler, next-occurrence
 helpers, the registry, settings builder and push, the notification publisher, test factories
 and waits). The test timer factories already exist as per-package copies; a new test uses its
 package's one.
@@ -246,8 +250,9 @@ package's one.
   with the default from `defaults.go`.
 
 A surface the code has and the docs do not mention is a finding; so is a documented one
-nothing implements (`weather.data_stale_ttl_minutes` is parsed, defaulted and documented, and
-nothing reads it), and a default in the docs that differs from the code.
+nothing implements, and a default in the docs that differs from the code. Known gap (verify
+before relying on it): `weather.data_stale_ttl_minutes` is parsed, defaulted and documented,
+and nothing reads it; a diff that touches it either implements it or removes it with the docs.
 
 ## 6. Verify before you trust (don't hand-wave the gates)
 
