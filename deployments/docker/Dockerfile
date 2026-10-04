@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-# Every base image is pinned by index digest: the release scans the image it
-# builds and a recovery re-run rebuilds it, so a tag that moved in between would
-# ship something nobody scanned. Dependabot bumps the tag and the digest together.
+# Base images are pinned by tag, not by digest: dhi.io republishes its tags
+# often to ship security fixes, and a rebuild should pick those up. Every
+# release build is scanned, so a newer base never ships unscanned.
 
 ########################
 # deps: cache modules
 ########################
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:16da8d3c0c7a8276fee2196e3ba764d73c3db22f13cc2dc3a6799e8c0dcf9fe6 AS deps
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev AS deps
 WORKDIR /src
 RUN --mount=type=cache,target=/var/cache/apk \
 	apk add --no-cache git
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
 ########################
 # build: compile static binary
 ########################
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev@sha256:16da8d3c0c7a8276fee2196e3ba764d73c3db22f13cc2dc3a6799e8c0dcf9fe6 AS build
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26.8-alpine3.23-dev AS build
 ARG VERSION="dev"
 ARG COMMIT="none"
 ARG DATE="unknown"
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomodcache \
 # runtime: dhi.io hardened static base (distroless-style, no shell).
 # The daemon binary is CGO_ENABLED=0 so no libc is required.
 ########################
-FROM dhi.io/static:20250419@sha256:98ef7a853608577e8d66dad1d25ada75d745d782f28d84e9ecfb85dfeb1f9c98
+FROM dhi.io/static:20250419
 
 # hadolint ignore=DL3050
 LABEL org.opencontainers.image.title="awtrix-controller" \

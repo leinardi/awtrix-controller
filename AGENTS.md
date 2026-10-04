@@ -45,7 +45,7 @@ Project targets live in the local `.mk/*.mk` files listed in `MK_LOCAL_FILES`, n
 - `internal/scheduler/`, `internal/clock/` — the recurring-job scheduler and the injectable clock the tests drive.
 - `internal/model/` — the JSON payloads Awtrix3 accepts.
 - `internal/logger/` — the slog singleton.
-- `deployments/` — the Dockerfile (`dhi.io` bases, pinned by digest), a compose example and the sample config.
+- `deployments/` — the Dockerfile (`dhi.io` bases, pinned by tag), a compose example and the sample config.
 - `docs/release.md` — how a release is cut and recovered.
 
 ## Go coding rules
