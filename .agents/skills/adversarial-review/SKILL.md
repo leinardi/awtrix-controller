@@ -162,9 +162,10 @@ replaces the fetch with a simulation for debugging.
 
 ### Image, release and CI
 
-- The image (`deployments/docker/Dockerfile`) pins every base by digest and runs on
-  `dhi.io/static`, relying on its non-root default user (there is no explicit `USER`). Adding
-  root, a shell or a package manager to the runtime stage, or an unpinned base, is a finding.
+- The image (`deployments/docker/Dockerfile`) pins every base by tag (not by digest: dhi.io
+  republishes its tags with security fixes) and runs on `dhi.io/static`, relying on its non-root
+  default user (there is no explicit `USER`). Adding root, a shell or a package manager to the
+  runtime stage, or a base on `latest` or with no tag, is a finding.
 - `docs/release.md` is the release contract: the `guard` job refuses any ref but `main`; the
   mode comes from fail-closed lookups (only "not found" reads as absent); the image is built
   once, scanned by digest, copied with `skopeo copy --all --preserve-digests`, attested and
