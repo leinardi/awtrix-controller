@@ -236,11 +236,11 @@ setting there that matches nothing in this repo.
 
 ### (d) Cross-file duplication
 
-Before accepting a new helper, search `internal/**` and `cmd/**` for the one that already
-exists, by *behavior*. The *Reuse before writing* table in `go-style-guide` lists them (clock, scheduler, next-occurrence
-helpers, the registry, settings builder and push, the notification publisher, test factories
-and waits). The test timer factories already exist as per-package copies; a new test uses its
-package's one.
+Before accepting a new helper, search `internal/**` and `cmd/**` for the one that already exists, by
+*behavior*. The *Reuse before writing* table in `go-style-guide` lists them (clock, scheduler,
+next-occurrence helpers, the registry, settings builder and push, the notification publisher, test
+factories and waits). The test timer factories already exist as per-package copies; a new test uses
+its package's one.
 
 ### (e) Docs drift
 
