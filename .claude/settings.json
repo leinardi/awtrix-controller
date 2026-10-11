@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(make check-stage)",
+      "Bash(make go-build)",
+      "Bash(make go-test)",
+      "Bash(make go-vet)",
+      "Bash(make go-lint)",
+      "Bash(make verify)",
+      "Bash(make verify-go)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(gofmt *)",
+      "Bash(pre-commit run *)",
+      "Bash(golangci-lint run *)",
+      "Bash(scripts/check-*.sh)",
+      "Bash(scripts/check-*.sh *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/gofmt-on-edit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
