@@ -1,0 +1,24 @@
+# Suppression baseline -- one line per rule, "<family>/<rule><TAB><count>".
+#
+# Every number here is a standing decision to let a linter stay silent somewhere. It may go down
+# freely and may only go up with a reviewer's agreement, which is the whole point of the file being
+# committed: scripts/check-suppressions.sh refuses a commit that adds a suppression line without
+# changing this file, so raising a count is a visible act rather than a side effect.
+#
+# Regenerate with: scripts/check-suppressions.sh --update
+# reviewed 1, 2026-10-11
+nolint/containedctx	1
+nolint/cyclop	3
+nolint/dupl	5
+nolint/err113	11
+nolint/forcetypeassert	2
+nolint/funlen	2
+nolint/gochecknoglobals	1
+nolint/gocognit	1
+nolint/gocritic	6
+nolint/gocyclo	3
+nolint/gosmopolitan	1
+nolint/ireturn	2
+nolint/maintidx	1
+nolint/tagliatelle	4
+nolint/wrapcheck	10
