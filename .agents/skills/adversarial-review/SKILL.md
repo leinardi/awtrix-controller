@@ -53,7 +53,13 @@ clean, review the branch against `main` (third row).
 
 Also read `git log --oneline` for the range and any linked issue/PR body — the stated
 **intent** is what you check the code against. A change that works but does something other
-than what it claims is a finding.
+than what it claims is a finding, and so is a commit type that ships the wrong version: `svu`
+derives the release from the Conventional Commits since the last tag, and PRs land as merge
+commits, so every commit counts. A change users should receive in the binary or the image typed
+`chore`, `docs`, `refactor` or `perf` never ships; tooling, CI or docs typed `feat` or `fix`
+cuts a release that changes nothing; a stray `!` cuts a major; and a word ending in `feat` or
+`fix` right before a colon anywhere in a subject counts as that type (`AGENTS.md`,
+`docs/release.md`).
 
 Read every changed file in full, not just the hunks. For non-trivial changes, also read the
 callers, implementations, tests and docs of what changed — found with a reference search, not
@@ -163,9 +169,11 @@ replaces the fetch with a simulation for debugging.
 ### Image, release and CI
 
 - The image (`deployments/docker/Dockerfile`) pins every base by tag (not by digest: dhi.io
-  republishes its tags with security fixes) and runs on `dhi.io/static`, relying on its non-root
+  republishes its tags with security fixes), pins the `# syntax` frontend by digest, carries the
+  seven OCI labels `.hadolint.yaml` requires, and runs on `dhi.io/static`, relying on its non-root
   default user (there is no explicit `USER`). Adding root, a shell or a package manager to the
-  runtime stage, or a base on `latest` or with no tag, is a finding.
+  runtime stage, or a base on `latest` or with no tag, is a finding; `test/dockerfiles` pins
+  these.
 - `docs/release.md` is the release contract: the `guard` job refuses any ref but `main`; the
   mode comes from fail-closed lookups (only "not found" reads as absent); the image is built
   once, scanned by digest, copied with `skopeo copy --all --preserve-digests`, attested and
@@ -189,6 +197,12 @@ Do not skim for style. Run these passes, each with a "how would I make this fail
 - **Contract drift**: does the code do what the commit message / PR / issue claims? A flag,
   environment variable, config key, topic, payload field, exit code or error text changed
   without updating every consumer and the docs (§5 (e)).
+- **Meta-tests**: a test under `test/` (pins, vacuous flags, Dockerfile invariants, docs links,
+  the license and suppression scripts) guards a claim about the repository rather than the
+  product. Make the guarded thing go wrong and check the test notices: a test that passes because
+  its input is empty, its file list matched nothing, its rule never ran, its tool was skipped
+  (`AWTRIX_CONTROLLER_REQUIRE_TOOLS` unset) or an allowlist entry swallows the new line is a
+  false pass, and a meta-test that can no longer fail is a finding.
 - **Tests**: does the diff add or change a test for the behavior it introduces? A test that
   passes against the *old* code, that asserts on a fake's recorded calls instead of the
   behavior they produced, or that was weakened/deleted to make the change pass — all findings.
@@ -227,7 +241,9 @@ which spec line retires this surface, and does it change in this diff? If none, 
 ### (c) A new suppression has to show its work
 
 Any new `//nolint:`, `# shellcheck disable=` or `# hadolint ignore=` must explain why the fix
-does not apply: for a complexity rule, what broke when the extraction was tried; for
+does not apply, and arrives with `.suppressions-baseline` updated in the same commit
+(`scripts/check-suppressions.sh --update`); a baseline raised without a reason in the diff is a
+finding too: for a complexity rule, what broke when the extraction was tried; for
 `varnamelen`, why the name has to be short (the *Maintainer rules* in `go-style-guide` say it
 should not be). A
 reason that restates the rule, or no reason, is a finding; so is a directive for a disabled
@@ -266,6 +282,7 @@ Use focused tests while investigating (`go test ./internal/broker -run TestBroke
 | `go.mod` / `go.sum` | `make go-tidy` and `make audit-deps` (govulncheck; network required) |
 | `deployments/docker/Dockerfile` | hadolint via `make check`, plus `make docker-build` |
 | `.github/scripts/**` | `bash .github/scripts/binary-attestation-status.test.sh` |
+| `test/**`, `scripts/check-*.sh`, `.suppressions-baseline` | `go test -count=1 ./test/...` with `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |
 | anything else | `make check` (pre-commit on all files) |
 
