@@ -8,6 +8,10 @@ MK_LOCAL_AUDIT_DEPS_INCLUDED := 1
 # the build actually reaches the affected symbol, so it answers "is this repository exposed", not
 # "does a vulnerable version appear in the graph".
 #
+# govulncheck runs with -test, so the test packages count as entry points too: a vulnerable
+# symbol reached only from a test (a test helper, a dependency only the meta-tests under test/
+# import) is reported as well, rather than being invisible to the scan.
+#
 # It needs the network, and govulncheck over every package is too slow to run on every Go change.
 # This target is the one that is run deliberately, whenever go.mod or go.sum change.
 #
@@ -21,6 +25,6 @@ audit-deps: audit-deps-go ## Scan Go dependencies for known vulnerabilities (net
 
 .PHONY: audit-deps-go
 audit-deps-go: ## Run the pinned govulncheck over every Go package
-	$(GO) run $(GOVULNCHECK) ./...
+	$(GO) run $(GOVULNCHECK) -test ./...
 
 endif  # MK_LOCAL_AUDIT_DEPS_INCLUDED
