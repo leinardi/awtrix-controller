@@ -21,6 +21,11 @@ golangci-lint is not on `PATH` in every environment; run it through pre-commit (
 *Lint and test loop* at the end). Never commit with `--no-verify` — fix the underlying
 issue instead.
 
+No file carries a `//go:build` tag, so `.golangci.yaml` sets no `run.build-tags` and `go vet`
+sees every file. A tagged file would be invisible to both: whoever adds the first tag also adds it
+to `run.build-tags` and gives `verify-go` a tagged vet. Generated files are skipped only when they
+carry the standard `// Code generated ... DO NOT EDIT.` header (`exclusions.generated: strict`).
+
 Linters that are **disabled** in `.golangci.yaml`, so their rules do not apply:
 
 | Disabled linter | Reason |
@@ -131,6 +136,15 @@ func (h *ControllerHook) OnConnectAuthenticate(_ *mqtt.Client, packet packets.Pa
 
 `nolintlint` cannot see a directive for a disabled linter, so it never reports one as
 unused: do not write them, and drop one you find on a line you touch.
+
+**Suppressions are ratcheted.** [`.suppressions-baseline`](../../../.suppressions-baseline) holds
+one count per rule (`nolint/<linter>`, plus the shellcheck and hadolint families).
+`scripts/check-suppressions.sh` runs as the `check-suppressions` pre-commit hook and refuses a
+count above its baseline, a rule the baseline does not know, a count below its baseline (the file
+must describe the tree), and a staged diff that adds a suppression line without also changing the
+baseline. Every new, moved or removed suppression therefore needs
+`scripts/check-suppressions.sh --update`, committed with the change that earned it. Raising a count
+needs a reviewer's agreement; the baseline file is what they read.
 
 ---
 
@@ -435,7 +449,9 @@ awtrix-controller/
 - [ ] Stateless methods use an unnamed receiver
 - [ ] `any` not `interface{}`; `new(expr)`, not a pointer-boxing helper
 - [ ] Numbers other than 0–3 extracted to named constants (non-test code)
-- [ ] Each `//nolint` names specific linters and explains why the fix does not apply
+- [ ] Each `//nolint` names specific linters and explains why the fix does not apply; the
+      suppression baseline is updated in the same commit (§3)
+- [ ] Errors classified with `errors.Is` / `errors.AsType[T]`, never `==`
 - [ ] Function statement count ≤ 50 (non-test code); no `FIXME`
 - [ ] Checked §13 for an existing helper; time from `clock.Clock`, timers from the scheduler
 - [ ] Fire times built with `time.Date` in the configured location
@@ -445,6 +461,9 @@ awtrix-controller/
 
 1. Run `pre-commit run golangci-lint-fmt --files <changed .go files>` and
    `pre-commit run golangci-lint-full --files <changed .go files>` (or `--all-files`).
-2. Run `make go-build`, `make go-vet` and `make go-test`.
+2. Run `make verify-go` (`go-build`, `go-test` with the race detector, `go-vet`, and `go-lint`,
+   the same pinned golangci-lint over the whole module).
 3. Fix each report and re-run from step 1 until all of them are clean.
 4. Check `git status`: the formatter hook rewrites files in place, so review and keep its changes.
+   If you added, moved or removed a suppression, run `scripts/check-suppressions.sh --update` and
+   stage `.suppressions-baseline`.
