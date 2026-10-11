@@ -13,7 +13,8 @@
 ```bash
 make go-build      # static binary into ./dist/
 make go-test       # go test -race ./...
-make audit-deps    # govulncheck over every package (network required)
+make verify-go     # build, test, vet and golangci-lint in one go
+make audit-deps    # govulncheck -test over every package (network required)
 make docker-build  # the container image, for the host's architecture
 ```
 
@@ -24,8 +25,13 @@ make check         # the full pre-commit suite on every file (golangci-lint, had
 make check-stage   # the same, on the staged files only
 ```
 
-CI runs the same hooks, the tests and the vulnerability scan on every pull request
-(`.github/workflows/ci.yaml`).
+CI runs the same hooks, the tests and the vulnerability scan on every pull request and every push to
+`main` (`.github/workflows/ci.yaml`).
+
+Every source file carries the MIT license header (the `check-license-headers` hook), and every
+`//nolint`, `# shellcheck disable=` or `# hadolint ignore=` is counted against
+`.suppressions-baseline` (the `check-suppressions` hook): see
+[AGENTS.md](AGENTS.md#suppressions-are-ratcheted).
 
 ## Branches and pull requests
 

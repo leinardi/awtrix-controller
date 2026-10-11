@@ -13,17 +13,20 @@ CLI flags and behaviour.
 
 ```bash
 make go-build      # CGO_ENABLED=0 build into ./dist/
-make go-test       # go test -race ./...
+make go-test       # go test -race ./... (the meta-tests under test/ included)
 make go-vet
+make go-lint       # golangci-lint v2, all linters, at the pre-commit pin, over the whole module
+make verify-go     # go-build, go-test, go-vet and go-lint
 make go-tidy       # go mod tidy + go mod verify
-make audit-deps    # govulncheck over every package (network required); also runs in CI and as a pre-commit hook on go.mod/go.sum changes
+make audit-deps    # govulncheck -test over every package (network required); also runs in CI and as a pre-commit hook on go.mod/go.sum changes
 make check         # pre-commit on all files: lint, formatters, tests
 make check-stage   # pre-commit on the staging area only
 make docker-build
 make docker-run
 ```
 
-Before calling a change done, run `make go-build`, `make go-test` and `make check`.
+Before calling a change done, run the rows of the [validation matrix](#validation-matrix) that
+match it.
 
 Single test:
 
@@ -52,9 +55,41 @@ refresh: `make mk-common-update`. Project targets live in the local `.mk/*.mk` f
   the tests drive.
 - `internal/model/` — the JSON payloads Awtrix3 accepts.
 - `internal/logger/` — the slog singleton.
-- `deployments/` — the Dockerfile (`dhi.io` bases, pinned by tag), a compose example and the sample
-  config.
+- `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
+  digest), a compose example and the sample config.
 - `docs/release.md` — how a release is cut and recovered.
+- `test/` — meta-tests, all ordinary Go packages run by `go test ./...`: `test/toolchain` (one Go
+  line, the hadolint and govulncheck pins, no vacuous flags), `test/dockerfiles` (the image's
+  stages, labels and frontend, and hadolint's label schema), `test/docs` (Markdown links),
+  `test/licenseheaders` and `test/suppressions` (the two scripts below), and `test/internal/`
+  (`gitenv` isolates scratch-repository git commands, `toolgate` finds hadolint).
+- `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/gofmt-on-edit.sh` (the
+  Claude Code edit hook in `.claude/settings.json`) and make-common's `bootstrap-mk-common.sh`.
+
+### Generated or vendored: never hand-edit
+
+- `.mk/{docker,help,go,password,pre-commit}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
+  make-common; refresh them with `make mk-common-update`, and port a change upstream.
+- `.suppressions-baseline`: written by `scripts/check-suppressions.sh --update`.
+
+## Validation matrix
+
+Run before considering an edit done. `make check` applies to every row.
+
+| You edited | Run |
+| --- | --- |
+| `**/*.go` | `make verify-go`, then `make check-stage` |
+| `go.mod`, `go.sum` | `make go-tidy`, `make audit-deps` (network; the commit hook runs it too), `go test ./test/toolchain/` |
+| `deployments/docker/Dockerfile`, `.hadolint.yaml`, `.dockerignore` | `go test ./test/dockerfiles/ ./test/toolchain/` (hadolint runs in `make check` and in `test/dockerfiles`), `make docker-build` (needs a `dhi.io` login) |
+| `.golangci.yaml` | `make go-lint` |
+| `scripts/check-suppressions.sh`, `.suppressions-baseline` | `go test ./test/suppressions/` |
+| `scripts/check-license-headers.sh` | `go test ./test/licenseheaders/` |
+| `scripts/hooks/gofmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.go` file in Claude Code |
+| `.github/scripts/binary-attestation-status.sh` | `bash .github/scripts/binary-attestation-status.test.sh` (also the `release-scripts` CI job) |
+| `.github/workflows/**`, `.github/actions/**` | `pre-commit run actionlint --all-files`, `go test ./test/toolchain/ ./test/dockerfiles/` |
+| `.pre-commit-config.yaml`, `Makefile`, `.mk/**` | `make check`, `go test ./test/toolchain/`, `make help` |
+| `test/**` | `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 go test -count=1 ./test/...` |
+| `**/*.md` | `go test -count=1 ./test/docs/`; prose wraps at 100 columns (markdownlint) |
 
 ## Go coding rules
 
@@ -78,9 +113,27 @@ These are written out in full in `.agents/skills/go-style-guide/SKILL.md`; the s
   wall clock).
 - Version strings (`version`, `commit`, `date`) live in `cmd/awtrix-controller/version.go` and are
   filled by `-ldflags -X main.version=...` from `GO_LDFLAGS` in `.mk/go.mk`.
-- Every Go file carries the MIT license header.
+- Every Go and shell file, the Dockerfile, the Makefile and the repo-local `.mk` fragments carry
+  the MIT license header, with the year of the file's first commit (copy it from any Go or shell
+  file, or use the IntelliJ MIT copyright profile). The `check-license-headers` pre-commit hook
+  (`scripts/check-license-headers.sh`) checks the whole tree; the make-common files are exempt.
 - A new `//nolint`, `# shellcheck disable=` or `# hadolint ignore=` explains why the fix does not
   apply here, not which rule fired.
+- `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` (set by the `go-test` CI job) turns a missing hadolint into a
+  meta-test failure instead of a skip.
+
+## Suppressions are ratcheted
+
+Every in-file suppression is counted per rule against `.suppressions-baseline` by the
+`check-suppressions` pre-commit hook (`scripts/check-suppressions.sh`): `//nolint:<linter>`,
+`# shellcheck disable=`, `# hadolint ignore=` and `# hadolint global ignore=`.
+
+Adding one is allowed, but never silently: the hook refuses a commit that adds a suppression line
+without changing the baseline in the same commit, including a swap or a moved file that leaves the
+count unchanged. Prefer fixing the finding. If a suppression really is right, write it with a reason
+(`//nolint:<linter> // reason`), stage it, run `scripts/check-suppressions.sh --update`, and commit
+the baseline alongside it. A count that has fallen below its baseline fails the same way, with the
+same fix: the file describes the repository, not a past one.
 
 ## Project skills
 

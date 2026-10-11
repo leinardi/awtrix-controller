@@ -255,9 +255,10 @@ make go-build && make go-test && make check
 
 ## CI / Release
 
-- **CI** (`.github/workflows/ci.yaml`): on every pull request, the tests with the race detector, a
-  govulncheck scan, the pre-commit hooks (golangci-lint, hadolint, dclint, …), markdownlint,
-  shellcheck, yamllint, and a Conventional Commits check of every commit.
+- **CI** (`.github/workflows/ci.yaml`): on every pull request and every push to `main`, the tests
+  with the race detector, a govulncheck scan, every pre-commit hook on every file (golangci-lint,
+  hadolint, dclint, markdownlint, shellcheck, yamllint, …), and on pull requests a Conventional
+  Commits check of every commit; `ci-result` is the one check that stands for all of them.
 - **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version
   derived from the commits when left empty. It builds static binaries for `linux/amd64` and
   `linux/arm64` and a multi-arch image, scans the image with Trivy before tagging, then publishes
