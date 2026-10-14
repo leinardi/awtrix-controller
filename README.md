@@ -126,7 +126,8 @@ dist/awtrix-controller --config deployments/config.sample.yaml \
 
 ## Configuration overview
 
-See [`deployments/config.sample.yaml`](deployments/config.sample.yaml) for the full annotated example. Required fields are marked below.
+See [`deployments/config.sample.yaml`](deployments/config.sample.yaml) for the full annotated
+example. Required fields are marked below.
 
 ### MQTT (required)
 
@@ -254,16 +255,20 @@ make go-build && make go-test && make check
 
 ## CI / Release
 
-- **CI** (`.github/workflows/ci.yaml`): on every pull request, the tests with the race detector, a govulncheck scan, the
-  pre-commit hooks (golangci-lint, hadolint, dclint, …), markdownlint, shellcheck, yamllint, and a Conventional Commits check of
-  every commit.
-- **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version derived from the commits when
-  left empty. It builds static binaries for `linux/amd64` and `linux/arm64` and a multi-arch image, scans the image with Trivy
-  before tagging, then publishes the image to GHCR with provenance and a cosign signature, and the GitHub release with checksums.
+- **CI** (`.github/workflows/ci.yaml`): on every pull request and every push to `main`, the tests
+  with the race detector, a govulncheck scan, every pre-commit hook on every file (golangci-lint,
+  hadolint, dclint, markdownlint, shellcheck, yamllint, …), and on pull requests a Conventional
+  Commits check of every commit; `ci-result` is the one check that stands for all of them.
+- **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version
+  derived from the commits when left empty. It builds static binaries for `linux/amd64` and
+  `linux/arm64` and a multi-arch image, scans the image with Trivy before tagging, then publishes
+  the image to GHCR with provenance and a cosign signature, and the GitHub release with checksums.
   See [docs/release.md](docs/release.md).
-- **Scheduled scan** (`.github/workflows/scheduled-scan.yaml`): the latest image and the Go dependencies, every week.
+- **Scheduled scan** (`.github/workflows/scheduled-scan.yaml`): the latest image and the Go
+  dependencies, every week.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute, and [SECURITY.md](SECURITY.md) to report a vulnerability.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute, and [SECURITY.md](SECURITY.md) to report a
+vulnerability.
 
 ## License
 

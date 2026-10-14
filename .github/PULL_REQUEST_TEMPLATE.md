@@ -14,7 +14,12 @@ Any HTML comment will be stripped when the markdown is rendered, so you don't ne
 - [ ] I am targeting the `main` branch
 - [ ] I have **rebased** this branch on top of the destination branch
 - [ ] I have executed `make check` locally *before creating the commit* and it has run successfully
-- [ ] Every commit message follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with a scope (`type(scope): subject`)
+- [ ] Every commit message follows
+  [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with a scope
+  (`type(scope): subject`)
+- [ ] The commit type matches whether the change ships: `feat` or `fix` for what users should
+  receive in the binary or the image, a non-release type for everything else
+  (AGENTS.md, "Commit messages")
 - [ ] I have performed a self-review of my own code
 - [ ] There are no `WIP` commits in this PR
 
