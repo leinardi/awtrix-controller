@@ -55,10 +55,18 @@ serde_json = "1.0.154"
 serde_repr = "0.1.21"
 serde_yaml_ng = "0.10"
 thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
 tracing = "0.1.44"
+tracing-log = "0.2.0"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "json", "std", "tracing-log"] }
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[dev-dependencies]
+log = "0.4.34"
+tokio = { version = "1.54.1", features = ["test-util", "rt", "macros", "time"] }

@@ -89,6 +89,13 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   `deserialize_with` visitors that mirror yaml.v3; serde cannot see quoting, so a quoted
   `"1883"` gets accepted where yaml.v3 refused it. (throwaway Go program; serde_yaml_ng probe)
 
+### Logging
+
+- `slog.Level.UnmarshalText` reads a level name in any case plus an optional `+N`/`-N` offset
+  (`info+2`), and slog's levels are -4/0/4/8 → port the parser, then map the numeric threshold to
+  the tracing filter that passes the same records (`info+1` lets warn through, not info).
+  (slog source)
+
 ### CLI
 
 - Go's `flag` accepts `-long` as well as `--long`; clap 4 does not → list it as a breaking

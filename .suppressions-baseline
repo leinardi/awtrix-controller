@@ -6,9 +6,10 @@
 # changing this file, so raising a count is a visible act rather than a side effect.
 #
 # Regenerate with: scripts/check-suppressions.sh --update
-# reviewed 6, 2026-10-24
+# reviewed 7, 2026-10-24
 expect/clippy::cast_possible_truncation	1
 expect/clippy::cast_precision_loss	3
+expect/clippy::disallowed_methods	2
 expect/clippy::ref_option	1
 expect/clippy::struct_excessive_bools	3
 nolint/containedctx	1
