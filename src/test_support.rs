@@ -25,7 +25,7 @@
 //! Helpers shared by the unit tests.
 
 use std::io;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, Once, PoisonError};
 
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::MakeWriter;
@@ -45,12 +45,25 @@ impl Captured {
 
     /// Installs a JSON subscriber writing here as the default on this thread until the guard is
     /// dropped. A current-thread tokio test sees the records of the tasks it spawns too.
+    ///
+    /// tracing caches each callsite's interest across all live dispatchers. A callsite another
+    /// test thread registers while this subscriber is being installed can cache "never" from a
+    /// snapshot without it, and this thread then silently loses the record. A global subscriber
+    /// that is interested in everything is in every later snapshot, so no shared callsite caches
+    /// "never"; the rebuild heals one cached before that global was installed.
     pub fn install(&self, level: LevelFilter) -> tracing::subscriber::DefaultGuard {
-        tracing::subscriber::set_default(crate::logger::subscriber(
+        static GLOBAL: Once = Once::new();
+        GLOBAL.call_once(|| {
+            // Fails only when a global default already exists, which then serves the same purpose.
+            let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+        });
+        let guard = tracing::subscriber::set_default(crate::logger::subscriber(
             level,
             LogFormat::Json,
             self.clone(),
-        ))
+        ));
+        tracing::callsite::rebuild_interest_cache();
+        guard
     }
 }
 

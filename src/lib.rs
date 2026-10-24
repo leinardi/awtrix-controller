@@ -25,6 +25,8 @@
 //! awtrix-controller: an embedded MQTT broker and automation controller for Awtrix3 LED matrix
 //! clocks.
 
+pub mod broker;
+pub mod clientstate;
 pub mod clock;
 pub mod config;
 pub mod daynight;
@@ -33,6 +35,7 @@ pub mod logger;
 pub mod model;
 pub mod notification;
 pub mod scheduler;
+pub mod settings;
 pub mod weather;
 
 #[cfg(test)]

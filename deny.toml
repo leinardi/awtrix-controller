@@ -38,6 +38,11 @@ allow = [
     "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
+exceptions = [
+    # systemstat (rmqtt's system statistics) is public-domain-equivalent; allowed for that crate
+    # only, so another Unlicense-only crate still needs a decision.
+    { allow = ["Unlicense"], crate = "systemstat" },
+]
 
 [bans]
 multiple-versions = "allow"

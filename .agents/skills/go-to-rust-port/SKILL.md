@@ -108,6 +108,13 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   (`info+2`), and slog's levels are -4/0/4/8 → port the parser, then map the numeric threshold to
   the tracing filter that passes the same records (`info+1` lets warn through, not info).
   (slog source)
+- Go tests capture logs by swapping a handler; the tracing equivalent, a per-test
+  `subscriber::set_default` under the parallel test runner, loses records intermittently → tracing
+  caches each callsite's interest across all live dispatchers, so a callsite another test thread
+  registers while yours is being installed can cache "never". Install a global catch-all
+  subscriber once (`set_global_default(tracing_subscriber::registry())`) before the scoped one and
+  call `tracing::callsite::rebuild_interest_cache()` after it. (awtrix-controller: a weather
+  controller test lost its warning in 3 of 40 runs, 0 of 40 after)
 
 ### CLI
 
@@ -163,6 +170,10 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   a recurring job keeps the runtime auto-advancing, so the test spins forever instead of failing
   → bound such waits with `tokio::time::timeout`, and move fixture timestamps with the clock when
   a recurring job reads "now". (weather controller tests)
+- Go's `net.Listen` sets `SO_REUSEADDR`; a listener built through socket2 (rmqtt-net's `Builder`)
+  does not unless asked (`.reuseaddr(Some(true))`), so a quick restart cannot bind the port while
+  the previous run's server-side sockets are still closing. (broker shutdown test: rebinding failed
+  until set)
 - Give shutdown one overall deadline and hand each step only what remains; never a fresh grace
   period per step, never sequential per-session waits. (plan review)
 
