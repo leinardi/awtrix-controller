@@ -77,6 +77,7 @@ const untrackedPrefix = "untracked/"
 
 var (
 	goHeader    = comment("/*", " * ", " *", " */") + "\npackage x\n"
+	rustHeader  = comment("/*", " * ", " *", " */") + "\npub fn run() {}\n"
 	hashHeader  = comment("#", "# ", "#", "#")
 	shellHeader = "#!/usr/bin/env bash\n" + hashHeader + "\necho ok\n"
 	makefile    = hashHeader + "\nMK_COMMON_FILES := docker.mk help.mk\n"
@@ -161,6 +162,9 @@ func TestHeaderCases(t *testing.T) {
 			map[string]string{"internal/x/x.go": "// filler\n" + fillerInWindow + goHeader},
 			false,
 		},
+		"rust file with the header":       {map[string]string{"src/x.rs": rustHeader}, true},
+		"rust file without a header":      {map[string]string{"src/x.rs": "pub fn run() {}\n"}, false},
+		"rust make fragment, no header":   {map[string]string{".mk/rust.mk": "x:\n"}, false},
 		"untracked file without a header": {map[string]string{untrackedPrefix + "scratch.go": "package x\n"}, true},
 		"upstream make fragment":          {map[string]string{".mk/docker.mk": "x:\n", ".mk/help.mk": "y:\n"}, true},
 		"bootstrap script":                {map[string]string{"scripts/bootstrap-mk-common.sh": "#!/bin/sh\n"}, true},

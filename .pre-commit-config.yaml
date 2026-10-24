@@ -111,6 +111,41 @@ repos:
         pass_filenames: false
         require_serial: true
         files: ^go\.(mod|sum)$
+  # The Rust workspace. Every command is workspace-wide, so the meta crate is held to the same
+  # lints as the controller, and --locked, so Cargo.lock is what gets tested. The toolchain comes
+  # from rust-toolchain.toml.
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --check
+        language: system
+        pass_filenames: false
+        files: '(\.rs$|^rustfmt\.toml$|^rust-toolchain\.toml$)'
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets --locked -- -D warnings
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: '(\.rs$|(^|/)Cargo\.(toml|lock)$|^clippy\.toml$|^rust-toolchain\.toml$)'
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --workspace --locked
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: '(\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$)'
+      # Like audit-deps-go: it fires when the dependency graph changes, needs the network for the
+      # advisory database, and catches a bad upgrade at the moment it is made. The rust CI job runs
+      # the same check on every pull request.
+      - id: cargo-deny
+        name: cargo deny
+        entry: cargo deny check
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: '((^|/)Cargo\.(toml|lock)$|^deny\.toml$)'
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.38.0
     hooks:

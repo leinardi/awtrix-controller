@@ -18,9 +18,9 @@ permissions:
   contents: read
 
 jobs:
-  # The authoritative lint gate: every pre-commit hook over every file. Two hooks are skipped
-  # because a dedicated job below runs the same thing: go-test-repo-mod (go-test, with -race) and
-  # audit-deps-go (go-vulncheck).
+  # The authoritative lint gate: every pre-commit hook over every file. Four hooks are skipped
+  # because a dedicated job below runs the same thing: go-test-repo-mod (go-test, with -race),
+  # audit-deps-go (go-vulncheck), and cargo-test and cargo-deny (rust).
   pre-commit-all:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -33,6 +33,16 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+
+      # For the cargo-fmt and cargo-clippy hooks.
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.98.0
+          components: clippy, rustfmt
+
+      - name: Cache the Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -54,7 +64,7 @@ jobs:
 
       - name: Run every pre-commit hook on every file
         env:
-          SKIP: go-test-repo-mod,audit-deps-go
+          SKIP: go-test-repo-mod,audit-deps-go,cargo-test,cargo-deny
         run: pre-commit run --all-files --show-diff-on-failure
 
       # pre-commit fails a hook that modifies a tracked file, which covers the auto-fixing hooks
@@ -288,6 +298,40 @@ jobs:
       - name: Scan dependencies for known vulnerabilities
         run: make audit-deps-go
 
+  # The Rust workspace: the same workspace-wide commands as make verify-rust and the pre-commit
+  # hooks, plus cargo-deny (advisories, licences, bans and sources; the advisory database needs the
+  # network). The toolchain matches rust-toolchain.toml.
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.98.0
+          components: clippy, rustfmt
+
+      - name: Cache the Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint with clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run the tests
+        run: cargo test --workspace --locked
+
+      - name: Check dependencies with cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
   # The one required check that stands for the rest: GitHub counts a skipped required job as passing,
   # so this job runs always and decides. On a pull request every needed job must succeed; on a push
   # or a dispatch the pull-request-only conventional-commits job is skipped and the others must
@@ -301,6 +345,7 @@ jobs:
       - release-scripts
       - go-test
       - go-vulncheck
+      - rust
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

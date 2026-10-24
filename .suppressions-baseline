@@ -6,7 +6,7 @@
 # changing this file, so raising a count is a visible act rather than a side effect.
 #
 # Regenerate with: scripts/check-suppressions.sh --update
-# reviewed 1, 2026-10-11
+# reviewed 2, 2026-10-24
 nolint/containedctx	1
 nolint/cyclop	3
 nolint/dupl	5

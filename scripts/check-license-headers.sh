@@ -28,7 +28,7 @@
 # any tracked source file whose first lines do not carry the MIT notice with Roberto Leinardi's
 # copyright, so a header copied from another project is caught as surely as a missing one.
 #
-# Governed: Go and shell sources, Dockerfiles, the Makefile and the repo-local .mk fragments.
+# Governed: Go, Rust and shell sources, Dockerfiles, the Makefile and the repo-local .mk fragments.
 # Exempt: the make-common files the bootstrap fetches (the .mk snippets named in the Makefile's
 # MK_COMMON_FILES, and scripts/bootstrap-mk-common.sh), which are make-common's own files under its
 # licence. YAML, JSON and Markdown are never governed.
@@ -81,7 +81,7 @@ is_governed() {
 	base="${path##*/}"
 
 	case "${path}" in
-	*.go | *.sh | .mk/*.mk)
+	*.go | *.rs | *.sh | .mk/*.mk)
 		return 0
 		;;
 	esac
@@ -115,7 +115,7 @@ is_exempt() {
 
 has_header() {
 	local path="$1" body line
-	# The header without its comment prefix: Go writes " * ", shell, make and Docker "# ".
+	# The header without its comment prefix: Go and Rust write " * ", shell, make and Docker "# ".
 	body="$(head -n "${HEADER_WINDOW}" -- "${path}" | sed -E 's/^(#| \*) //')"
 
 	for line in "${REQUIRED_LINES[@]}"; do

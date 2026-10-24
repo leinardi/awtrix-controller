@@ -45,10 +45,17 @@ GOVULNCHECK_VERSION ?= v1.8.0
 GOVULNCHECK        ?= golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 .PHONY: audit-deps
-audit-deps: audit-deps-go ## Scan Go dependencies for known vulnerabilities (network required)
+audit-deps: audit-deps-go audit-deps-rust ## Scan Go and Rust dependencies for known vulnerabilities (network required)
 
 .PHONY: audit-deps-go
 audit-deps-go: ## Run the pinned govulncheck over every Go package
 	$(GO) run $(GOVULNCHECK) -test ./...
+
+# The Rust side is checked against the RustSec advisory database by cargo-deny, configured in
+# deny.toml. Unlike govulncheck it is not reachability-aware: any advisory against a crate in the
+# graph counts, which is why deny.toml's ignores each carry a reason.
+.PHONY: audit-deps-rust
+audit-deps-rust: ## Check every Rust dependency against the RustSec advisories (cargo-deny)
+	$(CARGO) deny check advisories
 
 endif  # MK_LOCAL_AUDIT_DEPS_INCLUDED

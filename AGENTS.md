@@ -142,6 +142,8 @@ after review:
 
 - `go-style-guide` — before any `.go` edit.
 - `adversarial-review` — for any review request ("review my diff", "is this ready to merge").
+- `go-to-rust-port` — before planning or implementing any part of a Go-to-Rust port. Update it in
+  the same commit as any new non-obvious learning.
 
 ## Commit messages
 
