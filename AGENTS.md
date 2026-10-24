@@ -83,7 +83,7 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   example and the sample config.
 - `.github/actions/` — `setup-hadolint` and `setup-zigbuild`, pinned and sha256-checked.
 - `docs/release.md` — how a release is cut and recovered.
-- `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/gofmt-on-edit.sh` (the
+- `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/rustfmt-on-edit.sh` (the
   Claude Code edit hook in `.claude/settings.json`) and make-common's `bootstrap-mk-common.sh`.
 
 ### Generated or vendored: never hand-edit
@@ -105,7 +105,7 @@ Run before considering an edit done. `make check` applies to every row.
 | `deployments/docker/Dockerfile`, `.hadolint.yaml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (hadolint runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
 | `scripts/check-suppressions.sh`, `.suppressions-baseline` | `cargo test --locked -p meta --test suppressions` |
 | `scripts/check-license-headers.sh` | `cargo test --locked -p meta --test license_headers` |
-| `scripts/hooks/gofmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a file in Claude Code |
+| `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
 | `.github/scripts/binary-attestation-status.sh` | `bash .github/scripts/binary-attestation-status.test.sh` (also the `release-scripts` CI job) |
 | `.github/workflows/**`, `.github/actions/**` | `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test toolchain --test dockerfiles` |
 | `.pre-commit-config.yaml`, `Makefile`, `.mk/**` | `make check`, `cargo test --locked -p meta --test toolchain`, `make help` |
@@ -114,9 +114,9 @@ Run before considering an edit done. `make check` applies to every row.
 
 ## Rust coding rules
 
-The lints live once, in `[workspace.lints]` of the root `Cargo.toml`, with their settings in
-`clippy.toml`; every member declares `[lints] workspace = true`, and every lint and test command
-runs workspace-wide. In short:
+These are written out in full in `.agents/skills/rust-style-guide/SKILL.md`. The lints live once, in
+`[workspace.lints]` of the root `Cargo.toml`, with their settings in `clippy.toml`; every member
+declares `[lints] workspace = true`, and every lint and test command runs workspace-wide. In short:
 
 - **Lint baseline:** `unsafe_code` is forbidden; `clippy::pedantic` warns, and clippy runs with
   `-D warnings`.
@@ -124,7 +124,7 @@ runs workspace-wide. In short:
   (`allow_attributes`), and so is a suppression without a reason. The reason says why the fix does
   not apply here, not which lint fired.
 - **No panics outside tests:** `unwrap_used` and `expect_used` are denied (tests may use both).
-  Return an error, one `thiserror` enum per module; `anyhow` only in `main` and `run`.
+  Return an error, one `thiserror` enum per module.
 - **No direct printing:** `print_stdout` and `print_stderr` are denied. Log through `tracing`; the
   version output is an explicit `writeln!` to stdout.
 - **Exhaustive matches:** `wildcard_enum_match_arm` is denied: a match on an enum names every
@@ -134,7 +134,7 @@ runs workspace-wide. In short:
 - **Item order:** public items before private ones within an `impl`.
 - **Tests:** unit tests sit in a `#[cfg(test)] mod tests` beside the code (or a `tests.rs` in the
   module directory). Timers are driven by the paused tokio clock (`#[tokio::test(start_paused =
-  true)]`), not by sleeping. A test ported from Go carries a doc comment naming the Go test it
+  true)]`), not by sleeping. A test ported from Go carries a doc comment naming the Go function it
   replaces (``/// Go: `TestJobFiresOnceThenReschedules` ``).
 
 ## Conventions worth knowing
@@ -181,7 +181,7 @@ not a past one.
 Skills live in `.agents/skills/` (symlinked as `.claude/skills`). Load them before the work, not
 after review:
 
-- `go-style-guide` — before any `.go` edit.
+- `rust-style-guide` — before any `.rs` edit.
 - `adversarial-review` — for any review request ("review my diff", "is this ready to merge").
 - `go-to-rust-port` — before planning or implementing any part of a Go-to-Rust port. Update it in
   the same commit as any new non-obvious learning.

@@ -1,27 +1,27 @@
-# Conventions (beyond AGENTS.md and the go-style-guide skill)
+# Conventions (beyond AGENTS.md and the rust-style-guide skill)
 
-Full rules: `.agents/skills/go-style-guide/SKILL.md` (load before any .go edit). Lint traps that
+Full rules: `.agents/skills/rust-style-guide/SKILL.md` (load before any .rs edit). Lint traps that
 repeatedly bite:
 
-- varnamelen: no short names in large scopes (`tz`→`timezone`, `wg`→`waitGroup`).
-- No builtin shadowing (`copy`, `len`, `cap`, `new`, `close`, `delete`, `append`, `error`, also
-  `set`).
-- exhaustive: explicit `case` for every enum value. funcorder: exported methods before unexported.
-- No inline `if err := ...; err != nil`; unique error names per call site (`hookErr`, `tcpErr`) —
-  duplicate names trigger a linter auto-fix redeclaration bug.
-- Stateless methods: unnamed receiver `func (*T) M()` (satisfies both staticcheck ST1006 and revive
-  unused-receiver).
-- forbidigo bans `fmt.Printf`: use `fmt.Fprintf(os.Stdout, ...)`.
-- gocritic hugeParam/rangeValCopy: pass large structs by pointer, iterate by index.
-- `atomic.Value` over `atomic.Int32` for small enums (avoids gosec G115).
-- Every `Test*` starts with `t.Parallel()`.
+- `min_ident_chars`: no single-letter names, closures included (only `x`, `y` allowed).
+- `wildcard_enum_match_arm`: name every variant (`Some(_) | None => ...`), no `_ =>` on an enum.
+- `unwrap_used`/`expect_used` denied outside `#[test]`/`#[cfg(test)]`: helpers in `tests/*.rs` are
+  not covered (`tests/run.rs` carries a crate-level `#![expect]`); poisoned mutex:
+  `.lock().unwrap_or_else(PoisonError::into_inner)`.
+- `print_stdout`/`print_stderr` denied: log via `tracing`, `writeln!` for `--version`.
+- `disallowed_methods`: no `Timestamp::now`/`Zoned::now`/`SystemTime::now`/`Instant::now` outside
+  `src/clock` and the weather simulation; use the injected `Clock`.
+- pedantic: `#[must_use]` on pure fns, `# Errors` docs, identifiers in backticks in docs.
+- Public items before private ones within an `impl` (review rule, not linted).
 
-Suppressions (`//nolint:<linter> // reason`, shellcheck/hadolint ignores) are ratcheted per rule
-against `.suppressions-baseline`; a commit adding or moving one must update the baseline in the same
-commit. The reason must say why the fix does not apply, not which rule fired.
+Suppressions: only `#[expect(lint, reason = "...")]`, ratcheted per lint against
+`.suppressions-baseline`; a commit adding or moving one must run
+`scripts/check-suppressions.sh --update` and commit the baseline. The reason says why the fix does
+not apply, not which lint fired.
 
-Tests: fake timer factories fire immediately when delay <= 0 (set the clock past fireAt before
-scheduling); capture logs via `logger.Set(slog.New(handler))`.
+Tests: paused tokio clock (`start_paused = true`) + `TokioClock`; bound every wait with
+`tokio::time::timeout`; capture logs with `test_support::Captured::install`; ported tests carry
+``/// Go: `TestX` ``.
 
 Commits: Conventional Commits with mandatory scope; type chosen by whether it should ship
 (`fix`/`feat` release, others don't); avoid words ending in `fix`/`feat` before a colon in other

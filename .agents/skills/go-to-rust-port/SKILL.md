@@ -33,11 +33,10 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - Go's `time.Date` normalises out-of-range fields (Feb 31 → Mar 3, month 13 → next January), and
   its DST gap/fold resolution is unspecified → decide clamping and gap/fold handling explicitly,
   route every local→instant conversion through one helper, and golden-test both DST days in two
-  zones. (Go docs; spike) In practice Go's resolution differs by zone: in a gap Berlin 02:30
-  becomes 03:30 but New York 02:30 becomes 01:30, and in a fold Berlin takes the later instant,
-  New York the earlier. `AddDate` from such a result keeps its shifted wall clock, so a Go daily
-  job at New York 02:30 fires at 01:30 on every later day. Capture the Go results with a
-  throwaway program before claiming parity. (throwaway Go program, go1.25)
+  zones. In practice Go differs by zone (gap: Berlin 02:30 → 03:30, New York 02:30 → 01:30; fold:
+  Berlin later, New York earlier), and `AddDate` keeps the shifted wall clock, so a New York daily
+  02:30 drifts to 01:30 for good. Capture Go's results before claiming parity. (throwaway Go
+  program, go1.25)
 - A time of day stored as "duration since local midnight" is an hour off on DST days → store civil
   wall-clock times and resolve them per date. (spike)
 - Daily windows resolved to instants can be **empty** on a DST day: a gap pushes the start past
@@ -46,16 +45,14 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - jiff 0.2's `Disambiguation::Compatible` (gap → shift forward by the gap, fold → earlier) and its
   refusal of `Timestamp + days` are useful guards → keep calendar arithmetic on civil types and
   convert once. (jiff 0.2 docs, spike)
-- Go's `time.Duration(n) * time.Hour` wraps silently on a huge `n`; jiff's
-  `SignedDuration::from_hours`/`from_mins` **panic** on overflow → for a value from config build
-  it as `from_secs(n.saturating_mul(3600))` and add with `saturating_add`. (jiff 0.2 docs; review
-  of a port)
-- `jiff::Zoned::now()` / `Timestamp::now()` ignore tokio's paused clock → keep a `Clock` trait;
-  the test implementation is a base timestamp plus tokio's elapsed time. (spike)
-- Go's `time.Parse("15:04", "7:00")` succeeds (one-digit hour, two-digit minute only) → a strict
-  `%H:%M` parser rejects configs Go accepted; parse leniently. `time.Parse("01-02", …)` needs two
-  digits each and parses into year 0, a leap year: `02-29` is valid, `02-30` is not. (spike;
-  throwaway Go program)
+- `time.Duration(n) * time.Hour` wraps on a huge `n`; jiff's `SignedDuration::from_hours` and
+  `from_mins` **panic** → build config values with `from_secs(n.saturating_mul(3600))` and
+  `saturating_add`. (jiff 0.2 docs; review of a port)
+- `Zoned::now()` / `Timestamp::now()` ignore tokio's paused clock → keep a `Clock` trait whose
+  test implementation is a base timestamp plus tokio's elapsed time. (spike)
+- `time.Parse("15:04", "7:00")` succeeds, so a strict `%H:%M` parser rejects configs Go took;
+  `time.Parse("01-02", …)` parses into year 0, a leap year: `02-29` is valid, `02-30` is not.
+  (throwaway Go program)
 - jiff 0.2's global time zone database prefers the host's zoneinfo even with
   `tzdb-bundle-always`; a trimmed host copy lacks the `backward` aliases (`US/Eastern`,
   `Europe/Kiev`), and jiff matches names case-insensitively where Go does not → look names up in
@@ -72,35 +69,30 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   them literally → byte golden tests differ there; decide and record it. (spike)
 - Go decodes JSON `null` into the zero value silently; serde errors on `null` for `f64` → use
   `Vec<Option<T>>` and decide what a missing value means. (spike)
-- `encoding/json` also matches object keys **case-insensitively**, treats `null` for a non-pointer
-  field as "leave it", and decodes a whole-payload `null` into a struct as a no-op success; a
-  derived serde struct does none of these. Duplicate keys resolve last-in-document-wins, and
-  `serde_json::Map` is key-sorted, so folding it loses that order → for a payload a device sends,
-  collect the entries in order with a `MapAccess` visitor, fold keys to lowercase, then decode
-  with `#[serde(default)]` and a null-as-default field helper. (throwaway Go program)
+- `encoding/json` matches keys **case-insensitively** (last duplicate wins), and reads a `null`
+  field or a whole-payload `null` as "leave it"; derived serde does none of these, and
+  `serde_json::Map` is key-sorted → for input from devices, collect entries in order with a
+  `MapAccess` visitor, lowercase the keys, then decode with `#[serde(default)]` and a
+  null-as-default helper. (throwaway Go program)
 - `json.NewDecoder(r).Decode(&v)` reads the first JSON value and ignores whatever follows;
   `serde_json::from_reader` rejects trailing data → decode with
   `Deserializer::from_reader(r).into_iter::<T>().next()`. (Go docs; review of a port)
-- A Go named string type with constants (`type Effect string`) is **open**: any string converts
-  to it and is sent verbatim. A closed Rust enum silently narrows that (user-supplied values get
-  rejected) → give it an `Other(String)` variant with hand-written serde, and keep `omitempty`'s
-  "empty string is omitted" in the skip predicate. (review of a port)
+- A Go named string type with constants (`type Effect string`) is **open**: any string is sent
+  verbatim, so a closed Rust enum narrows it → add an `Other(String)` variant with hand-written
+  serde, and keep `omitempty`'s "empty is omitted". (review of a port)
 - A Go interface with a custom `MarshalJSON` maps to an enum (untagged or tuple variants);
   embedded structs map to `#[serde(flatten)]`; `omitempty` maps to `skip_serializing_if`, and a
   field Go always emits (even `null`) must not get one. (spike)
 - The "zero means unset, apply default" config pattern makes an explicit `0` impossible → use
   `Option<T>` with defaults applied in one place. (spike)
-- yaml.v3 ignores unknown keys; serde does too unless `deny_unknown_fields`. serde_yaml is
-  archived → use serde_yaml_ng 0.10, whose errors carry the field path and line. (spike) It
-  still parses with `unsafe-libyaml`, which RustSec flags unmaintained (RUSTSEC-2024-0449), so
-  cargo-deny fails until it is ignored with a reason; serde-saphyr is the safe-Rust alternative.
-  (cargo-deny)
-- yaml.v3 is lenient where serde_yaml_ng 0.10 is not: `yes`/`no`/`on`/`off`/`y`/`n` into a bool,
-  a float into an int (truncated), `1_000` and `010` (octal) into an int, `null` (also as a whole
-  section or a list element) leaving the zero value. serde_yaml_ng does read an unquoted `9597`
-  or `true` into a `String` as written. → decode a hand-written config through
-  `deserialize_with` visitors that mirror yaml.v3; serde cannot see quoting, so a quoted
-  `"1883"` gets accepted where yaml.v3 refused it. (throwaway Go program; serde_yaml_ng probe)
+- serde_yaml is archived → serde_yaml_ng 0.10 (errors carry the field path and line), but it
+  parses with `unsafe-libyaml` (RUSTSEC-2024-0449, unmaintained): ignore it in cargo-deny with a
+  reason, or use serde-saphyr. (spike; cargo-deny)
+- yaml.v3 accepts what serde_yaml_ng rejects: `yes`/`no`/`on`/`off`/`y`/`n` bools, a float into an
+  int (truncated), `1_000` and `010` (octal) ints, `null` anywhere as the zero value; unknown keys
+  are ignored by both → decode a hand-written config through `deserialize_with` visitors that
+  mirror yaml.v3 (serde cannot see quoting, so a quoted `"1883"` int slips through). (throwaway Go
+  program; serde_yaml_ng probe)
 
 ### Logging
 
@@ -108,53 +100,48 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   (`info+2`), and slog's levels are -4/0/4/8 → port the parser, then map the numeric threshold to
   the tracing filter that passes the same records (`info+1` lets warn through, not info).
   (slog source)
-- Go's `slog` prints through its default logger before anything is configured; `tracing` drops
-  every event until a subscriber is installed, silently → anything that logs during startup (a
-  config loader warning about a skipped entry) must run after the subscriber is up. When the
-  log format itself comes from the config file, read just that key first, install the
-  subscriber, then load. (awtrix-controller: skipped-notification warnings were lost)
+- `slog` prints through its default logger before anything is configured; `tracing` silently
+  drops every event until a subscriber exists → install it before anything logs (a config
+  loader's warnings); when the log format comes from the config file, peek that key first.
+  (seen in awtrix-controller: lost config warnings)
 - Go tests capture logs by swapping a handler; the tracing equivalent, a per-test
-  `subscriber::set_default` under the parallel test runner, loses records intermittently → tracing
-  caches each callsite's interest across all live dispatchers, so a callsite another test thread
-  registers while yours is being installed can cache "never". Install a global catch-all
-  subscriber once (`set_global_default(tracing_subscriber::registry())`) before the scoped one and
-  call `tracing::callsite::rebuild_interest_cache()` after it. (awtrix-controller: a weather
-  controller test lost its warning in 3 of 40 runs, 0 of 40 after)
+  `subscriber::set_default`, misses records twice over: it is thread-local, so tasks on a
+  multi-thread runtime never see it, and under the parallel test runner tracing caches each
+  callsite's interest across all live dispatchers, so a callsite another test registers while
+  yours is being installed can cache "never" → assert from a `current_thread` runtime, install a
+  global catch-all subscriber once (`set_global_default(tracing_subscriber::registry())`) before
+  the scoped one, and call `tracing::callsite::rebuild_interest_cache()` after it. (a test lost
+  its warning in 3 of 40 runs, 0 of 40 after)
 
 ### CLI
 
-- Go's `flag` accepts `-long` as well as `--long`; clap 4 does not → list it as a breaking
-  change, or add explicit aliases. (spike) Worse than refusing it, clap reads `-config` as the
-  short-flag cluster `-c onfig` when `-c` exists: `-config=/x` loads a file named `onfig=/x` and
-  `-log-level=debug` silently logs at the default → scan the arguments for `-<long name>` before
-  parsing and fail with the `--` spelling. (awtrix-controller)
-- Go's `flag` semantics clap does not share by default: a repeated flag keeps the last value
-  (clap errors → `args_override_self = true`); a string or int flag takes the next argument even
-  when it starts with `-` (`allow_hyphen_values = true`); a bool flag never takes a separate
-  value but accepts `=false` and `strconv.ParseBool`'s spellings (`num_args = 0..=1`,
-  `require_equals = true`, `default_missing_value = "true"`, a custom parser); an int flag is a
-  base-0 Go literal (`0x10`, `0o17`, `017`, `1_000`); `-h` exits 1 where clap's help exits 0.
-  (awtrix-controller)
+- Go's `flag` accepts `-long` as well as `--long`; clap 4 does not, and worse, reads `-config` as
+  the short cluster `-c onfig` when `-c` exists (`-log-level=debug` silently keeps the default) →
+  scan the arguments for `-<long name>` before parsing and fail with the `--` spelling, and list
+  it as a breaking change. (spike; seen in awtrix-controller)
+- Other `flag` semantics clap lacks by default: last repeated value wins
+  (`args_override_self`); a value may start with `-` (`allow_hyphen_values`); a bool takes no
+  separate value but accepts `=false` and `ParseBool` spellings (`num_args = 0..=1`,
+  `require_equals`, `default_missing_value = "true"`, a custom parser); ints are base-0 Go
+  literals (`0x10`, `017`, `1_000`); `-h` exits 1 where clap exits 0. (flag source; port tests)
 
 ## 3. Ecosystem map
 
 - **Embedded MQTT broker (comqtt, mochi):**
   - rumqttd 0.20: no disconnect event, no publisher ID on publishes, local links publish at QoS 0
     only → unusable as a controller broker. (spike: failing ported tests)
-  - rmqtt 0.24 has comqtt-like hooks, with traps:
+  - rmqtt 0.24 has comqtt-like hooks, with traps (rmqtt 0.24 source unless noted):
     - listeners default to `allow_anonymous(true)`, which accepts a username-less CONNECT
       **before any auth hook runs** → build every listener with `allow_anonymous(false)` through
-      one helper. (rmqtt 0.24 source)
-    - retained messages need the `rmqtt-retainer` plugin; without it core warns and drops them.
-      (spike)
-    - each connection is a detached task → run the broker on its own runtime so shutdown can stop
-      them. (rmqtt 0.24 source)
-    - `kick()` can wait 5 s per session → kick concurrently under one deadline. (rmqtt 0.24
-      source)
-    - `MqttServer::start` calls `process::exit` on error → use `run()`. (rmqtt 0.24 source)
-    - it always pulls QUIC, hence `ring`'s C build; MSRV 1.94. (spike: build)
+      one helper; an auth handler returning `NotFound` defers to the next one, so return a
+      definite result and stop the chain.
+    - retained messages need the `rmqtt-retainer` plugin, else core drops them (spike); each
+      connection is a detached task → own the broker's runtime so shutdown can end them;
+      `kick()` can wait 5 s per session → kick concurrently under one deadline;
+      `MqttServer::start` calls `process::exit` on error → use `run()`; QUIC is always built,
+      hence `ring`'s C build; MSRV 1.94.
   - rumqttc 0.25 as a test client keeps its socket open after DISCONNECT until the next poll →
-    drop the event loop explicitly in tests that assert on disconnects. (spike)
+    drop the event loop in tests that assert on disconnects. (spike)
 - **HTTP (net/http):** reqwest's default rustls backend builds `aws-lc-sys` (C), which hurts musl
   cross-builds → ureq 3 with rustls + ring + webpki-roots is lighter (28 vs 86 crates, 3.3 vs
   7.0 MB) and needs no CA files in a static image; run it in `spawn_blocking`. (spike) Its
@@ -169,66 +156,52 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 ## 4. Concurrency and shutdown
 
 - Dropping a tokio runtime waits for its `spawn_blocking` tasks, so one blocked HTTP call holds
-  the process open → build the runtime explicitly (not `#[tokio::main]`) and end it with
-  `shutdown_timeout`. (spike) The same holds for a `#[tokio::test]`: a test that cancels a hung
-  request passes but takes the request's whole timeout to exit → build the test's runtime by
-  hand and `shutdown_background()` it. (weather fetch test: 10 s to 0.1 s)
-- A scoped tracing subscriber (`with_default`) does not reach tasks spawned on a multi-thread
-  runtime → assert on logs from a `current_thread` runtime or install the subscriber globally.
-  (spike)
-- A job that re-derives its state from the wall clock when its timer fires can read the old
-  state: the tokio timer is monotonic, and a wall clock stepped back (or a test clock that does
-  not move) still reads just before the boundary, so nothing changes and the next boundary,
-  computed from this one, skips the transition → evaluate at `max(clock.now(), due)`. (test with
-  a frozen clock)
-- Under a paused tokio clock a test waiting for something that never happens does not time out:
-  a recurring job keeps the runtime auto-advancing, so the test spins forever instead of failing
-  → bound such waits with `tokio::time::timeout`, and move fixture timestamps with the clock when
-  a recurring job reads "now". (weather controller tests)
-- Go's `net.Listen` sets `SO_REUSEADDR`; a listener built through socket2 (rmqtt-net's `Builder`)
-  does not unless asked (`.reuseaddr(Some(true))`), so a quick restart cannot bind the port while
-  the previous run's server-side sockets are still closing. (broker shutdown test: rebinding failed
-  until set)
+  the process open → build the runtime by hand (not `#[tokio::main]`) and end it with
+  `shutdown_timeout`; in a test, `shutdown_background()`. (spike; a fetch test went 10 s → 0.1 s)
+- A job that re-derives state from the wall clock when its (monotonic) tokio timer fires can
+  read just before the boundary if the clock stepped back or is frozen, and then skips the
+  transition → evaluate at `max(clock.now(), due)`. (test with a frozen clock)
+- Under a paused tokio clock a recurring job keeps auto-advancing time, so a test waiting for
+  something that never happens spins forever → bound waits with `tokio::time::timeout`. (weather
+  controller tests)
+- Go's `net.Listen` sets `SO_REUSEADDR`; socket2 listeners (rmqtt-net's `Builder`) do not unless
+  asked (`.reuseaddr(Some(true))`), so a quick restart cannot rebind. (broker restart test)
 - Give shutdown one overall deadline and hand each step only what remains; never a fresh grace
   period per step, never sequential per-session waits. (plan review)
 
 ## 5. Tooling, lints and packaging
 
 - **Lints:** golangci-lint maps to clippy: exhaustive → `wildcard_enum_match_arm`, varnamelen →
-  `min_ident_chars`, forbidigo → `print_stdout`/`disallowed_methods`, `//nolint` →
-  `#[expect(lint, reason = "...")]` with `allow_attributes` and
-  `allow_attributes_without_reason` denied. (spike)
-- `[lints]` is not inherited by workspace members → declare `[workspace.lints]`, put
-  `[lints] workspace = true` in every member (and test that it is there), and run clippy with
-  `--workspace`. (spike)
+  `min_ident_chars`, forbidigo → `print_stdout`/`disallowed_methods` (a `time.Now` ban becomes
+  `disallowed-methods` on `Timestamp::now`, `Zoned::now`, `SystemTime::now`, `Instant::now`),
+  `//nolint` → `#[expect(lint, reason = "...")]` with `allow_attributes` and
+  `allow_attributes_without_reason` denied. `[lints]` is not inherited by workspace members →
+  `[workspace.lints]` plus `[lints] workspace = true` in every member (test that it is there),
+  and clippy with `--workspace`. (spike)
 - clippy's `allow-expect-in-tests` / `allow-unwrap-in-tests` cover `#[test]` functions and
-  `#[cfg(test)]` modules, **not** plain helper functions in an integration-test file under
-  `tests/` → avoid `expect` in those helpers (`unwrap_or_else(|error| panic!(...))`) or move them
-  into a `#[cfg(test)]` module. (clippy 1.98: failed build)
-- webpki-roots (the bundled Mozilla roots behind ureq's rustls) is `CDLA-Permissive-2.0`, which a
-  typical MIT/Apache/BSD licence allowlist rejects → allow it in `deny.toml` with a comment.
-  (cargo-deny)
-- cargo-deny 0.20: an `[advisories] ignore` entry written as `{ crate = "name" }` only ignores
-  **yanked** versions of that crate, not its advisories → ignore an unmaintained or vulnerable
-  crate by advisory ID (`{ id = "RUSTSEC-…", reason = "…" }`). (cargo-deny: `yanked-not-detected`
-  warning)
-- **Static builds:** cargo-zigbuild produces static musl binaries for amd64 and arm64; its stock
-  image can lag the MSRV. Alpine's distro rust uses host triple `*-alpine-linux-musl` and links
-  dynamically; `-C target-feature=+crt-static` breaks proc-macros unless `--target` is passed.
-  (spike: failing proc-macro build)
-- Docker Hardened Images' `dhi.io/rust` has no rustup in either variant. The `-alpine*-dev` one
-  is Alpine's own rustc (host `x86_64-alpine-linux-musl`) and cannot take another target's
-  standard library; the `-debian*-dev` one is the upstream standalone install, so a target is
-  added by unpacking `rust-std-<exact version>-<triple>.tar.xz` from static.rust-lang.org and
-  running its `install.sh --prefix=/usr/local` → pin the image's patch, the `rust-std` version
-  and each digest together (Dependabot cannot), and apt-get curl and xz-utils first: the image
-  has neither. With zig and cargo-zigbuild on top, one `$BUILDPLATFORM` stage builds both static
-  musl binaries. (awtrix-controller: amd64 and arm64 image builds)
+  `#[cfg(test)]` modules, **not** helper functions in `tests/*.rs` → use
+  `unwrap_or_else(|error| panic!(...))` there, or a file-level `#![expect]` with a reason.
+  (clippy 1.98: failed build)
+- cargo-deny 0.20: webpki-roots is `CDLA-Permissive-2.0`, outside a typical MIT/Apache/BSD
+  allowlist → allow it with a comment; and an `ignore` entry `{ crate = "name" }` only ignores
+  **yanked** versions → ignore advisories by ID (`{ id = "RUSTSEC-…", reason = "…" }`).
+  (cargo-deny warnings)
+- **Static builds:** cargo-zigbuild produces static musl binaries for amd64 and arm64 from one
+  build platform; its stock image can lag the MSRV, so install it on a pinned toolchain. Alpine's
+  distro rust links dynamically, and `+crt-static` breaks proc-macros unless `--target` is
+  passed. (spike: failing proc-macro build)
+- `dhi.io/rust` has no rustup. Its `-alpine*-dev` variant is Alpine's rustc and cannot take
+  another target; the `-debian*-dev` one is upstream's standalone install → add a target by
+  unpacking `rust-std-<exact version>-<triple>.tar.xz` from static.rust-lang.org and running its
+  `install.sh --prefix=/usr/local` (apt-get curl and xz-utils first), and bump the image patch,
+  `rust-std` version and digests together by hand. (amd64 and arm64 image builds)
 - Go's `t.Skip` has no libtest equivalent: a test gated on an external tool returns early with a
-  note on stderr, and an environment variable turns the missing tool into a panic in CI, or the
-  check passes silently exactly where it is meant to guard. (awtrix-controller meta-tests)
+  note on stderr → add an environment variable that turns the missing tool into a panic and set
+  it in CI, or the check passes silently exactly where it is meant to guard. (ported meta-tests)
 - **Calibration** (one small MQTT controller): Go 12 MB binary and 18 MB RSS; Rust 4.9–6.3 MB
   static binaries and about 5 MB RSS. Clean release builds take 36–110 s. (spike)
 
-Verified against: Rust 1.98, jiff 0.2, rmqtt 0.24, rumqttc 0.25, rumqttd 0.20, serde_yaml_ng
-0.10, ureq 3, sunrise 3, clap 4, cargo-deny 0.20.
+Verified against (2026-10): Rust 1.98.0, tokio 1.54, jiff 0.2.38, rmqtt 0.24.0, rumqttc 0.25.1,
+rumqttd 0.20 (spike only), serde_json 1.0, serde_yaml_ng 0.10.0, ureq 3.5.0, sunrise 3.0.0,
+tracing-subscriber 0.3.23, clap 4.6.7, cargo-deny 0.20.2, cargo-zigbuild 0.24.0, zig 0.17.0; Go
+baselines from go1.25.
