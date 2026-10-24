@@ -49,7 +49,6 @@ use tokio::runtime::{Handle, Runtime};
 use tokio::sync::oneshot;
 use tokio::task::{AbortHandle, JoinError};
 use tokio::time::Instant;
-use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 pub use self::hook::{Callbacks, ClientCallback, PublishDelay};
@@ -258,12 +257,6 @@ impl Broker {
         self.closing.store(true, Ordering::SeqCst);
     }
 
-    /// Waits for SIGINT, SIGTERM or `stop`, then shuts down within `budget`.
-    pub async fn run_until_stopped(self, stop: CancellationToken, budget: Duration) {
-        wait_for_signal_or(&stop).await;
-        self.shutdown(Instant::now() + budget).await;
-    }
-
     /// Shuts the broker down by `deadline`, each step getting only the time that remains:
     ///
     /// 1. refuse new authentications and drop device events;
@@ -432,37 +425,5 @@ async fn wait_for_no_sessions(context: ServerContext) {
             return;
         }
         tokio::time::sleep(SESSION_POLL_INTERVAL).await;
-    }
-}
-
-/// Waits for SIGINT, SIGTERM or `stop`.
-async fn wait_for_signal_or(stop: &CancellationToken) {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
-        let terminate = signal(SignalKind::terminate());
-        match terminate {
-            Ok(mut terminate) => {
-                tokio::select! {
-                    () = stop.cancelled() => {}
-                    _ = tokio::signal::ctrl_c() => {}
-                    _ = terminate.recv() => {}
-                }
-            }
-            Err(error) => {
-                warn!(error = %error, "broker: cannot listen for SIGTERM");
-                tokio::select! {
-                    () = stop.cancelled() => {}
-                    _ = tokio::signal::ctrl_c() => {}
-                }
-            }
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        tokio::select! {
-            () = stop.cancelled() => {}
-            _ = tokio::signal::ctrl_c() => {}
-        }
     }
 }

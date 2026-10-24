@@ -318,6 +318,22 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
     parse(&text)
 }
 
+/// The file's `log_format` alone, read before [`load`] so that the logger is up when `load`
+/// logs the entries it skips. `None` when the file cannot be read or parsed, or the value is not
+/// a format; [`load`] then reports why.
+#[must_use]
+pub fn peek_log_format(path: &Path) -> Option<LogFormat> {
+    #[derive(serde::Deserialize)]
+    struct LogFormatOnly {
+        #[serde(default)]
+        log_format: String,
+    }
+
+    let text = fs::read_to_string(path).ok()?;
+    let file: LogFormatOnly = serde_yaml_ng::from_str(&text).ok()?;
+    log_format(file.log_format).ok()
+}
+
 /// Parses and validates configuration YAML.
 ///
 /// # Errors

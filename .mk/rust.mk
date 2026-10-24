@@ -34,6 +34,16 @@ MK_LOCAL_RUST_INCLUDED := 1
 
 CARGO ?= cargo
 
+# The version strings the binary reports (--version) and logs at startup, read at compile time
+# by src/version.rs. The same values as the Go build's; only the targets that build a binary to
+# run pass them, since a change of any of them recompiles the crate.
+GIT_COMMIT  ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "none")
+GIT_VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo "v0.0.0")
+BUILD_DATE  ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+RUST_VERSION_ENV = AWTRIX_CONTROLLER_VERSION="$(GIT_VERSION)" \
+  AWTRIX_CONTROLLER_COMMIT="$(GIT_COMMIT)" \
+  AWTRIX_CONTROLLER_DATE="$(BUILD_DATE)"
+
 .PHONY: rust-build
 rust-build: ## Build the Rust workspace
 	$(CARGO) build --workspace --all-targets --locked
@@ -57,6 +67,10 @@ rust-fmt-check: ## Fail if the Rust code needs formatting
 .PHONY: rust-deny
 rust-deny: ## Check Rust dependencies with cargo-deny (advisories, licences, bans, sources; network required)
 	$(CARGO) deny check
+
+.PHONY: rust-run
+rust-run: ## Run the controller with the version strings set (ARGS="...")
+	$(RUST_VERSION_ENV) $(CARGO) run --locked -- $(ARGS)
 
 .PHONY: verify-rust
 verify-rust: rust-build rust-fmt-check rust-clippy rust-test ## Verify the Rust code (build, fmt, clippy, tests)

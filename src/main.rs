@@ -22,7 +22,48 @@
  * SOFTWARE.
  */
 
-//! The awtrix-controller binary. The Go implementation still ships; this entry point is wired up
-//! as the port lands.
+//! The awtrix-controller binary.
 
-fn main() {}
+use std::io::{self, Write};
+use std::process::ExitCode;
+use std::time::Duration;
+
+use awtrix_controller::run::{Options, run_with_options};
+use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
+
+/// The runtime could not be built.
+const EXIT_STARTUP: u8 = 2;
+
+fn main() -> ExitCode {
+    // Built by hand rather than with #[tokio::main], so that the end of the shutdown budget also
+    // bounds the runtime: dropping it would wait for every blocking task, a weather fetch still
+    // in flight included.
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(runtime_error) => {
+            let _ = writeln!(
+                io::stderr(),
+                "awtrix-controller: start the runtime: {runtime_error}"
+            );
+            return ExitCode::from(EXIT_STARTUP);
+        }
+    };
+
+    let getenv = |name: &str| std::env::var(name).ok();
+    let exit = runtime.block_on(run_with_options(
+        std::env::args_os().skip(1),
+        &getenv,
+        CancellationToken::new(),
+        Options::default(),
+    ));
+
+    let remaining = exit.deadline.map_or(Duration::ZERO, |deadline| {
+        deadline.saturating_duration_since(Instant::now())
+    });
+    runtime.shutdown_timeout(remaining);
+    exit.code
+}

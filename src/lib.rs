@@ -26,6 +26,7 @@
 //! clocks.
 
 pub mod broker;
+pub mod cli;
 pub mod clientstate;
 pub mod clock;
 pub mod config;
@@ -34,8 +35,10 @@ pub mod energysaving;
 pub mod logger;
 pub mod model;
 pub mod notification;
+pub mod run;
 pub mod scheduler;
 pub mod settings;
+pub mod version;
 pub mod weather;
 
 #[cfg(test)]

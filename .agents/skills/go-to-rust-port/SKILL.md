@@ -108,6 +108,11 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   (`info+2`), and slog's levels are -4/0/4/8 → port the parser, then map the numeric threshold to
   the tracing filter that passes the same records (`info+1` lets warn through, not info).
   (slog source)
+- Go's `slog` prints through its default logger before anything is configured; `tracing` drops
+  every event until a subscriber is installed, silently → anything that logs during startup (a
+  config loader warning about a skipped entry) must run after the subscriber is up. When the
+  log format itself comes from the config file, read just that key first, install the
+  subscriber, then load. (awtrix-controller: skipped-notification warnings were lost)
 - Go tests capture logs by swapping a handler; the tracing equivalent, a per-test
   `subscriber::set_default` under the parallel test runner, loses records intermittently → tracing
   caches each callsite's interest across all live dispatchers, so a callsite another test thread
@@ -119,7 +124,17 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 ### CLI
 
 - Go's `flag` accepts `-long` as well as `--long`; clap 4 does not → list it as a breaking
-  change, or add explicit aliases. (spike)
+  change, or add explicit aliases. (spike) Worse than refusing it, clap reads `-config` as the
+  short-flag cluster `-c onfig` when `-c` exists: `-config=/x` loads a file named `onfig=/x` and
+  `-log-level=debug` silently logs at the default → scan the arguments for `-<long name>` before
+  parsing and fail with the `--` spelling. (awtrix-controller)
+- Go's `flag` semantics clap does not share by default: a repeated flag keeps the last value
+  (clap errors → `args_override_self = true`); a string or int flag takes the next argument even
+  when it starts with `-` (`allow_hyphen_values = true`); a bool flag never takes a separate
+  value but accepts `=false` and `strconv.ParseBool`'s spellings (`num_args = 0..=1`,
+  `require_equals = true`, `default_missing_value = "true"`, a custom parser); an int flag is a
+  base-0 Go literal (`0x10`, `0o17`, `017`, `1_000`); `-h` exits 1 where clap's help exits 0.
+  (awtrix-controller)
 
 ## 3. Ecosystem map
 

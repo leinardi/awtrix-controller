@@ -628,3 +628,25 @@ fn sample_configuration_parses() {
     assert!(config.weather.enabled);
     assert_eq!(config.log_format, LogFormat::Text);
 }
+
+/// The format is read on its own, before the full load, and anything unreadable is `None`.
+#[test]
+fn peek_log_format_reads_only_the_format() {
+    let path = std::env::temp_dir().join(format!(
+        "awtrix-controller-peek-{}.yaml",
+        std::process::id()
+    ));
+    let cases = [
+        ("log_format: json\nmqtt: {}\n", Some(LogFormat::Json)),
+        ("log_format: text\n", Some(LogFormat::Text)),
+        ("mqtt:\n  port: 1\n", Some(LogFormat::Text)),
+        ("log_format: xml\n", None),
+        ("log_format: [json\n", None),
+    ];
+    for (text, expected) in cases {
+        std::fs::write(&path, text).expect("write");
+        assert_eq!(peek_log_format(&path), expected, "{text:?}");
+    }
+    std::fs::remove_file(&path).expect("remove");
+    assert_eq!(peek_log_format(&path), None);
+}
