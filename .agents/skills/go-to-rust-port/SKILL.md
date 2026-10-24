@@ -33,7 +33,11 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - Go's `time.Date` normalises out-of-range fields (Feb 31 → Mar 3, month 13 → next January), and
   its DST gap/fold resolution is unspecified → decide clamping and gap/fold handling explicitly,
   route every local→instant conversion through one helper, and golden-test both DST days in two
-  zones. (Go docs; spike)
+  zones. (Go docs; spike) In practice Go's resolution differs by zone: in a gap Berlin 02:30
+  becomes 03:30 but New York 02:30 becomes 01:30, and in a fold Berlin takes the later instant,
+  New York the earlier. `AddDate` from such a result keeps its shifted wall clock, so a Go daily
+  job at New York 02:30 fires at 01:30 on every later day. Capture the Go results with a
+  throwaway program before claiming parity. (throwaway Go program, go1.25)
 - A time of day stored as "duration since local midnight" is an hour off on DST days → store civil
   wall-clock times and resolve them per date. (spike)
 - Daily windows resolved to instants can be **empty** on a DST day: a gap pushes the start past

@@ -31,6 +31,7 @@ pub mod daynight;
 pub mod energysaving;
 pub mod logger;
 pub mod model;
+pub mod notification;
 pub mod scheduler;
 
 #[cfg(test)]
