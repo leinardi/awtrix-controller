@@ -16,6 +16,10 @@ ignore = [
     # here. No vulnerability is reported against either; revisit on every rmqtt upgrade.
     { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained, transitive via rmqtt; no known vulnerability" },
     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained, transitive via rmqtt; no known vulnerability" },
+    # Unmaintained, the parser under serde_yaml_ng, which reads only the operator's own
+    # configuration file, once at startup. No vulnerability is reported against it; serde-saphyr
+    # is the safe-Rust way out if that changes.
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained, transitive via serde_yaml_ng; parses only the local config file; no known vulnerability" },
 ]
 
 [licenses]

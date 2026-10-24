@@ -26,6 +26,12 @@ location:
 timezone: Europe/Berlin
 
 # ---------------------------------------------------------------------------
+# Log output format (optional)
+# text (default): human-readable lines; json: one JSON object per line.
+# ---------------------------------------------------------------------------
+# log_format: text
+
+# ---------------------------------------------------------------------------
 # Energy-saving window (optional)
 # Both times are HH:MM in the configured timezone. The window may span
 # midnight (e.g. start: "23:00" / end: "05:00").
@@ -128,7 +134,8 @@ weather:
   # notification_text_repeat: 3     # times the message scrolls per notification
   # inactive_after_missing_polls: 2 # clear event after N consecutive empty polls
 
-  # Warning thresholds
+  # Warning thresholds. Omit a threshold (or set it to null) for its default; any value given,
+  # 0 included, is used as is. Thresholds must be finite, and all but frost_temp_c >= 0.
   # gust_warn_kmh: 45.0             # wind gust warning threshold
   # gust_severe_kmh: 60.0           # wind gust severe threshold
   # heavy_rain_mm_per_15min: 5.0    # precipitation threshold for heavy rain

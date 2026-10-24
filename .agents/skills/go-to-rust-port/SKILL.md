@@ -44,8 +44,15 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   convert once. (jiff 0.2 docs, spike)
 - `jiff::Zoned::now()` / `Timestamp::now()` ignore tokio's paused clock → keep a `Clock` trait;
   the test implementation is a base timestamp plus tokio's elapsed time. (spike)
-- Go's `time.Parse("15:04", "7:00")` succeeds → a strict `%H:%M` parser rejects configs Go
-  accepted; parse leniently. (spike)
+- Go's `time.Parse("15:04", "7:00")` succeeds (one-digit hour, two-digit minute only) → a strict
+  `%H:%M` parser rejects configs Go accepted; parse leniently. `time.Parse("01-02", …)` needs two
+  digits each and parses into year 0, a leap year: `02-29` is valid, `02-30` is not. (spike;
+  throwaway Go program)
+- jiff 0.2's global time zone database prefers the host's zoneinfo even with
+  `tzdb-bundle-always`; a trimmed host copy lacks the `backward` aliases (`US/Eastern`,
+  `Europe/Kiev`), and jiff matches names case-insensitively where Go does not → look names up in
+  `TimeZoneDatabase::bundled()` and require `iana_name() == Some(name)`; special-case `""`, `UTC`
+  and `Local` as `time.LoadLocation` does. (probe on a slim host)
 - go-solar computes sunrise/sunset for the **UTC** date of the instant → the `sunrise` crate 3
   matches it within ±1 s; decide deliberately whether to use the local date instead. (spike)
 
@@ -71,7 +78,16 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - The "zero means unset, apply default" config pattern makes an explicit `0` impossible → use
   `Option<T>` with defaults applied in one place. (spike)
 - yaml.v3 ignores unknown keys; serde does too unless `deny_unknown_fields`. serde_yaml is
-  archived → use serde_yaml_ng 0.10, whose errors carry the field path. (spike)
+  archived → use serde_yaml_ng 0.10, whose errors carry the field path and line. (spike) It
+  still parses with `unsafe-libyaml`, which RustSec flags unmaintained (RUSTSEC-2024-0449), so
+  cargo-deny fails until it is ignored with a reason; serde-saphyr is the safe-Rust alternative.
+  (cargo-deny)
+- yaml.v3 is lenient where serde_yaml_ng 0.10 is not: `yes`/`no`/`on`/`off`/`y`/`n` into a bool,
+  a float into an int (truncated), `1_000` and `010` (octal) into an int, `null` (also as a whole
+  section or a list element) leaving the zero value. serde_yaml_ng does read an unquoted `9597`
+  or `true` into a `String` as written. → decode a hand-written config through
+  `deserialize_with` visitors that mirror yaml.v3; serde cannot see quoting, so a quoted
+  `"1883"` gets accepted where yaml.v3 refused it. (throwaway Go program; serde_yaml_ng probe)
 
 ### CLI
 
