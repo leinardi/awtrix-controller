@@ -6,7 +6,9 @@
 # changing this file, so raising a count is a visible act rather than a side effect.
 #
 # Regenerate with: scripts/check-suppressions.sh --update
-# reviewed 2, 2026-10-24
+# reviewed 5, 2026-10-24
+expect/clippy::ref_option	1
+expect/clippy::struct_excessive_bools	1
 nolint/containedctx	1
 nolint/cyclop	3
 nolint/dupl	5

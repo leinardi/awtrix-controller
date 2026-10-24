@@ -51,10 +51,20 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 
 ### JSON and YAML
 
-- `encoding/json` escapes `<`, `>` and `&` as `<`…; serde_json writes them literally → byte
-  golden tests differ there; decide and record it. (spike)
+- `encoding/json` escapes `<`, `>` and `&` as `\u003c`, `\u003e`, `\u0026`; serde_json writes
+  them literally → byte golden tests differ there; decide and record it. (spike)
 - Go decodes JSON `null` into the zero value silently; serde errors on `null` for `f64` → use
   `Vec<Option<T>>` and decide what a missing value means. (spike)
+- `encoding/json` also matches object keys **case-insensitively**, treats `null` for a non-pointer
+  field as "leave it", and decodes a whole-payload `null` into a struct as a no-op success; a
+  derived serde struct does none of these. Duplicate keys resolve last-in-document-wins, and
+  `serde_json::Map` is key-sorted, so folding it loses that order → for a payload a device sends,
+  collect the entries in order with a `MapAccess` visitor, fold keys to lowercase, then decode
+  with `#[serde(default)]` and a null-as-default field helper. (throwaway Go program)
+- A Go named string type with constants (`type Effect string`) is **open**: any string converts
+  to it and is sent verbatim. A closed Rust enum silently narrows that (user-supplied values get
+  rejected) → give it an `Other(String)` variant with hand-written serde, and keep `omitempty`'s
+  "empty string is omitted" in the skip predicate. (review of a port)
 - A Go interface with a custom `MarshalJSON` maps to an enum (untagged or tuple variants);
   embedded structs map to `#[serde(flatten)]`; `omitempty` maps to `skip_serializing_if`, and a
   field Go always emits (even `null`) must not get one. (spike)
