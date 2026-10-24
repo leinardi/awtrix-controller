@@ -46,6 +46,10 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - jiff 0.2's `Disambiguation::Compatible` (gap → shift forward by the gap, fold → earlier) and its
   refusal of `Timestamp + days` are useful guards → keep calendar arithmetic on civil types and
   convert once. (jiff 0.2 docs, spike)
+- Go's `time.Duration(n) * time.Hour` wraps silently on a huge `n`; jiff's
+  `SignedDuration::from_hours`/`from_mins` **panic** on overflow → for a value from config build
+  it as `from_secs(n.saturating_mul(3600))` and add with `saturating_add`. (jiff 0.2 docs; review
+  of a port)
 - `jiff::Zoned::now()` / `Timestamp::now()` ignore tokio's paused clock → keep a `Clock` trait;
   the test implementation is a base timestamp plus tokio's elapsed time. (spike)
 - Go's `time.Parse("15:04", "7:00")` succeeds (one-digit hour, two-digit minute only) → a strict
@@ -74,6 +78,9 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   `serde_json::Map` is key-sorted, so folding it loses that order → for a payload a device sends,
   collect the entries in order with a `MapAccess` visitor, fold keys to lowercase, then decode
   with `#[serde(default)]` and a null-as-default field helper. (throwaway Go program)
+- `json.NewDecoder(r).Decode(&v)` reads the first JSON value and ignores whatever follows;
+  `serde_json::from_reader` rejects trailing data → decode with
+  `Deserializer::from_reader(r).into_iter::<T>().next()`. (Go docs; review of a port)
 - A Go named string type with constants (`type Effect string`) is **open**: any string converts
   to it and is sent verbatim. A closed Rust enum silently narrows that (user-supplied values get
   rejected) → give it an `Other(String)` variant with hand-written serde, and keep `omitempty`'s
@@ -128,7 +135,11 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
     drop the event loop explicitly in tests that assert on disconnects. (spike)
 - **HTTP (net/http):** reqwest's default rustls backend builds `aws-lc-sys` (C), which hurts musl
   cross-builds → ureq 3 with rustls + ring + webpki-roots is lighter (28 vs 86 crates, 3.3 vs
-  7.0 MB) and needs no CA files in a static image; run it in `spawn_blocking`. (spike)
+  7.0 MB) and needs no CA files in a static image; run it in `spawn_blocking`. (spike) Its
+  `rustls` feature already means ring + webpki-roots, so `default-features = false,
+  features = ["rustls"]` only drops gzip; and ureq 3 turns a 4xx/5xx into `Err(StatusCode)`
+  unless `http_status_as_error(false)`, which Go's `resp.StatusCode` check needs. (ureq 3.5
+  source)
 - **Logging (slog):** tracing + tracing-subscriber; bridge crates that log through `log` with
   tracing-log. (spike)
 - **YAML (yaml.v3):** serde_yaml_ng, see §2.
@@ -137,7 +148,9 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 
 - Dropping a tokio runtime waits for its `spawn_blocking` tasks, so one blocked HTTP call holds
   the process open → build the runtime explicitly (not `#[tokio::main]`) and end it with
-  `shutdown_timeout`. (spike)
+  `shutdown_timeout`. (spike) The same holds for a `#[tokio::test]`: a test that cancels a hung
+  request passes but takes the request's whole timeout to exit → build the test's runtime by
+  hand and `shutdown_background()` it. (weather fetch test: 10 s to 0.1 s)
 - A scoped tracing subscriber (`with_default`) does not reach tasks spawned on a multi-thread
   runtime → assert on logs from a `current_thread` runtime or install the subscriber globally.
   (spike)
@@ -162,6 +175,9 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   `#[cfg(test)]` modules, **not** plain helper functions in an integration-test file under
   `tests/` → avoid `expect` in those helpers (`unwrap_or_else(|error| panic!(...))`) or move them
   into a `#[cfg(test)]` module. (clippy 1.98: failed build)
+- webpki-roots (the bundled Mozilla roots behind ureq's rustls) is `CDLA-Permissive-2.0`, which a
+  typical MIT/Apache/BSD licence allowlist rejects → allow it in `deny.toml` with a comment.
+  (cargo-deny)
 - cargo-deny 0.20: an `[advisories] ignore` entry written as `{ crate = "name" }` only ignores
   **yanked** versions of that crate, not its advisories → ignore an unmaintained or vulnerable
   crate by advisory ID (`{ id = "RUSTSEC-…", reason = "…" }`). (cargo-deny: `yanked-not-detected`

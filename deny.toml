@@ -34,6 +34,8 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "MPL-2.0",
+    # webpki-roots: the Mozilla root certificates bundled into the binary (ureq, rustls).
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 

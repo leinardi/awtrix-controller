@@ -33,6 +33,7 @@ pub mod logger;
 pub mod model;
 pub mod notification;
 pub mod scheduler;
+pub mod weather;
 
 #[cfg(test)]
 mod test_support;
