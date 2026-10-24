@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Timestamp};
+use jiff::{SignedDuration, Timestamp, ToSpan};
 
 /// A source of the current time.
 pub trait Clock: Send + Sync {
@@ -133,6 +133,18 @@ pub fn resolve_local(date: Date, time: Time, zone: &TimeZone) -> Result<Timestam
         .to_ambiguous_zoned(date.to_datetime(time))
         .compatible()?;
     Ok(zoned.timestamp())
+}
+
+/// The start of the local day after `instant` in `zone`, resolved through [`resolve_local`] so a
+/// zone whose clocks change at midnight follows the same policy.
+#[must_use]
+pub fn next_local_midnight(instant: Timestamp, zone: &TimeZone) -> Timestamp {
+    let today = instant.to_zoned(zone.clone()).date();
+    today
+        .tomorrow()
+        .ok()
+        .and_then(|tomorrow| resolve_local(tomorrow, Time::midnight(), zone).ok())
+        .unwrap_or_else(|| instant.saturating_add(1.day()).unwrap_or(Timestamp::MAX))
 }
 
 #[cfg(test)]
@@ -277,6 +289,36 @@ mod tests {
         assert_eq!(gap, instant("2026-03-08T07:30:00Z")); // 03:30 EDT
         let ordinary = resolve_local(day, time(12, 0, 0, 0), &new_york).expect("ordinary");
         assert_eq!(ordinary, instant("2026-03-08T16:00:00Z")); // EDT
+    }
+
+    /// The next local midnight is the start of the following local day, not 24 hours on, even
+    /// across a daylight-saving change.
+    #[test]
+    fn next_local_midnight_is_the_next_local_day() {
+        let berlin = zone("Europe/Berlin");
+        assert_eq!(
+            next_local_midnight(instant("2026-03-28T22:59:59Z"), &berlin), // 23:59:59 CET
+            instant("2026-03-28T23:00:00Z")
+        );
+        assert_eq!(
+            next_local_midnight(instant("2026-03-28T23:00:00Z"), &berlin), // 00:00 CET
+            instant("2026-03-29T22:00:00Z")                                // 00:00 CEST, 23 hours on
+        );
+        assert_eq!(
+            next_local_midnight(instant("2026-10-25T12:00:00Z"), &berlin),
+            instant("2026-10-25T23:00:00Z")
+        );
+        assert_eq!(
+            next_local_midnight(instant("2024-01-15T14:00:00Z"), &TimeZone::UTC),
+            instant("2024-01-16T00:00:00Z")
+        );
+        // Santiago's clocks spring forward at midnight: 00:00 does not exist on 2026-09-06, so
+        // the day starts at 01:00.
+        let santiago = zone("America/Santiago");
+        assert_eq!(
+            next_local_midnight(instant("2026-09-05T12:00:00Z"), &santiago),
+            instant("2026-09-06T04:00:00Z")
+        );
     }
 
     /// New York's fall-back day (2026-11-01, 02:00 EDT → 01:00 EST).

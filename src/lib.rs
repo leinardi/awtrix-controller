@@ -27,6 +27,11 @@
 
 pub mod clock;
 pub mod config;
+pub mod daynight;
+pub mod energysaving;
 pub mod logger;
 pub mod model;
 pub mod scheduler;
+
+#[cfg(test)]
+mod test_support;

@@ -141,44 +141,10 @@ fn filter_for_slog_level(threshold: i64) -> LevelFilter {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex, PoisonError};
-
     use tracing::{debug, info};
 
     use super::*;
-
-    /// A writer that keeps everything written to it.
-    #[derive(Clone, Default)]
-    struct Captured(Arc<Mutex<Vec<u8>>>);
-
-    impl Captured {
-        fn text(&self) -> String {
-            let bytes = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-            String::from_utf8_lossy(&bytes).into_owned()
-        }
-    }
-
-    impl io::Write for Captured {
-        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .extend_from_slice(buffer);
-            Ok(buffer.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'writer> MakeWriter<'writer> for Captured {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
+    use crate::test_support::Captured;
 
     fn capture(level: LevelFilter, format: LogFormat, emit: impl FnOnce()) -> String {
         let captured = Captured::default();

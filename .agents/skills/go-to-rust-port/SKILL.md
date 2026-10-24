@@ -54,7 +54,9 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   `TimeZoneDatabase::bundled()` and require `iana_name() == Some(name)`; special-case `""`, `UTC`
   and `Local` as `time.LoadLocation` does. (probe on a slim host)
 - go-solar computes sunrise/sunset for the **UTC** date of the instant → the `sunrise` crate 3
-  matches it within ±1 s; decide deliberately whether to use the local date instead. (spike)
+  matches it within ±1 s; decide deliberately whether to use the local date instead. West of UTC
+  the UTC date flips in the local evening, so a New York 20:00 in June, before sunset, reads as
+  night. (spike; golden test against go-solar v1.0.1)
 
 ### JSON and YAML
 
@@ -135,6 +137,11 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
 - A scoped tracing subscriber (`with_default`) does not reach tasks spawned on a multi-thread
   runtime → assert on logs from a `current_thread` runtime or install the subscriber globally.
   (spike)
+- A job that re-derives its state from the wall clock when its timer fires can read the old
+  state: the tokio timer is monotonic, and a wall clock stepped back (or a test clock that does
+  not move) still reads just before the boundary, so nothing changes and the next boundary,
+  computed from this one, skips the transition → evaluate at `max(clock.now(), due)`. (test with
+  a frozen clock)
 - Give shutdown one overall deadline and hand each step only what remains; never a fresh grace
   period per step, never sequential per-session waits. (plan review)
 
