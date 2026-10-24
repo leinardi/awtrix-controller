@@ -16,7 +16,7 @@ assignees: []
 
 * Project version / commit SHA: `?`
 * Operating system and version: `?`
-* Runtime and version (e.g., Go): `?`
+* Version (`awtrix-controller --version`, or the image tag): `?`
 * Any relevant tooling or dependencies and versions: `?`
 
 ## Step 3: Describe the problem

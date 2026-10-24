@@ -383,7 +383,7 @@ async fn warning_notification_has_no_color() {
 }
 
 /// Go: `TestControllerRescheduleInterval`. The first poll runs at once, the next ones every
-/// `poll_interval_minutes`, which the Go test could not reach.
+/// `poll_interval_minutes`, which the Go original could not reach.
 #[tokio::test(start_paused = true)]
 async fn polls_now_and_every_interval() {
     let mut harness = harness(config(), vec![Response::Points(Vec::new())], &[], "UTC");

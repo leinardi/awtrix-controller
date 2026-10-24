@@ -216,6 +216,17 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   image can lag the MSRV. Alpine's distro rust uses host triple `*-alpine-linux-musl` and links
   dynamically; `-C target-feature=+crt-static` breaks proc-macros unless `--target` is passed.
   (spike: failing proc-macro build)
+- Docker Hardened Images' `dhi.io/rust` has no rustup in either variant. The `-alpine*-dev` one
+  is Alpine's own rustc (host `x86_64-alpine-linux-musl`) and cannot take another target's
+  standard library; the `-debian*-dev` one is the upstream standalone install, so a target is
+  added by unpacking `rust-std-<exact version>-<triple>.tar.xz` from static.rust-lang.org and
+  running its `install.sh --prefix=/usr/local` → pin the image's patch, the `rust-std` version
+  and each digest together (Dependabot cannot), and apt-get curl and xz-utils first: the image
+  has neither. With zig and cargo-zigbuild on top, one `$BUILDPLATFORM` stage builds both static
+  musl binaries. (awtrix-controller: amd64 and arm64 image builds)
+- Go's `t.Skip` has no libtest equivalent: a test gated on an external tool returns early with a
+  note on stderr, and an environment variable turns the missing tool into a panic in CI, or the
+  check passes silently exactly where it is meant to guard. (awtrix-controller meta-tests)
 - **Calibration** (one small MQTT controller): Go 12 MB binary and 18 MB RSS; Rust 4.9–6.3 MB
   static binaries and about 5 MB RSS. Clean release builds take 36–110 s. (spike)
 

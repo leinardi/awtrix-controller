@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-//! The whole controller, from the flags to the shutdown: the ports of
-//! `cmd/awtrix-controller/run_test.go`, an end-to-end run with a device, and the shutdown budget.
+//! The whole controller, from the flags to the shutdown: the ports of the tests of the Go
+//! `cmd/awtrix-controller` package, an end-to-end run with a device, and the shutdown budget.
 
 #![expect(
     clippy::expect_used,

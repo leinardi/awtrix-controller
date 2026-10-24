@@ -18,9 +18,8 @@ permissions:
   contents: read
 
 jobs:
-  # The authoritative lint gate: every pre-commit hook over every file. Four hooks are skipped
-  # because a dedicated job below runs the same thing: go-test-repo-mod (go-test, with -race),
-  # audit-deps-go (go-vulncheck), and cargo-test and cargo-deny (rust).
+  # The authoritative lint gate: every pre-commit hook over every file. Two hooks are skipped
+  # because the rust job below runs the same thing: cargo-test and cargo-deny.
   pre-commit-all:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -29,12 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      # For the cargo-fmt and cargo-clippy hooks.
+      # For the cargo-fmt and cargo-clippy hooks, and the docs-links hook (a meta-test).
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
@@ -64,11 +58,11 @@ jobs:
 
       - name: Run every pre-commit hook on every file
         env:
-          SKIP: go-test-repo-mod,audit-deps-go,cargo-test,cargo-deny
+          SKIP: cargo-test,cargo-deny
         run: pre-commit run --all-files --show-diff-on-failure
 
       # pre-commit fails a hook that modifies a tracked file, which covers the auto-fixing hooks
-      # (markdownlint fix, prettier, dclint fix, golangci-lint fmt); this also fails on a file a
+      # (markdownlint fix, prettier, dclint fix); this also fails on a file a
       # hook creates, which its diff check does not see, so no fix can pass silently.
       - name: Fail if a hook modified a file
         run: |
@@ -138,9 +132,6 @@ jobs:
             check-added-large-files
             dclint
             hadolint
-            golangci-lint-config-verify
-            golangci-lint-fmt
-            golangci-lint-full
 
   markdownlint:
     # Reports inline PR review comments over a diff range; a push or a manual dispatch has
@@ -255,52 +246,11 @@ jobs:
       - name: Test binary-attestation-status.sh
         run: bash .github/scripts/binary-attestation-status.test.sh
 
-  # setup-go's built-in cache (keyed on go.sum) is enough at this size. The run covers the
-  # meta-tests under test/ too; with AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (hadolint)
-  # that is missing fails them instead of skipping them.
-  go-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Set up hadolint
-        uses: ./.github/actions/setup-hadolint
-
-      - name: Run unit tests with the race detector
-        env:
-          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
-        run: go test -race ./...
-
-  # The source-aware govulncheck scan (make audit-deps-go). It needs Go and the network, so it
-  # does not fit the reviewdog pre-commit-hooks job above, which runs an explicit hook allowlist.
-  # The .mk snippets are committed, so the make bootstrap only reads them here.
-  go-vulncheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Scan dependencies for known vulnerabilities
-        run: make audit-deps-go
-
   # The Rust workspace: the same workspace-wide commands as make verify-rust and the pre-commit
   # hooks, plus cargo-deny (advisories, licences, bans and sources; the advisory database needs the
-  # network). The toolchain matches rust-toolchain.toml.
+  # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's; with
+  # AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (hadolint) that is missing fails them
+  # instead of skipping them.
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -318,6 +268,9 @@ jobs:
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
+      - name: Set up hadolint
+        uses: ./.github/actions/setup-hadolint
+
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -325,6 +278,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run the tests
+        env:
+          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
         run: cargo test --workspace --locked
 
       - name: Check dependencies with cargo-deny
@@ -343,8 +298,6 @@ jobs:
       - pre-commit-all
       - conventional-commits
       - release-scripts
-      - go-test
-      - go-vulncheck
       - rust
     runs-on: ubuntu-latest
     timeout-minutes: 5

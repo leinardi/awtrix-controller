@@ -45,7 +45,7 @@ assignees: []
 
 * Project version / commit SHA: `?`
 * Operating system and version: `?`
-* Runtime and version (e.g., Go): `?`
+* Version (`awtrix-controller --version`, or the image tag): `?`
 * Any relevant tooling / dependencies and versions: `?`
 
 ---

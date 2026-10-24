@@ -35,8 +35,9 @@ MK_LOCAL_RUST_INCLUDED := 1
 CARGO ?= cargo
 
 # The version strings the binary reports (--version) and logs at startup, read at compile time
-# by src/version.rs. The same values as the Go build's; only the targets that build a binary to
-# run pass them, since a change of any of them recompiles the crate.
+# by src/version.rs; docker.mk passes the same three as the image's build arguments. Only the
+# targets that build a binary to run pass them, since a change of any of them recompiles the
+# crate.
 GIT_COMMIT  ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "none")
 GIT_VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo "v0.0.0")
 BUILD_DATE  ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")

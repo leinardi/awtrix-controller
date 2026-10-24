@@ -23,7 +23,7 @@
  */
 
 //! The embedded broker against real MQTT clients over TCP and WebSocket: the ports of
-//! `internal/broker/broker_test.go`, the spike's takeover and WebSocket tests, the
+//! the Go broker tests (`internal/broker`), the spike's takeover and WebSocket tests, the
 //! authentication-bypass tests, and shutdown.
 
 #![expect(

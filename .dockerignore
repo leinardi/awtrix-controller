@@ -14,15 +14,12 @@
 .serena
 docs
 examples
-test
 tests
 *.md
 
 # Local artifacts
 dist
 target
-coverage.out
-coverage.html
 
 # Editor/IDE
 .idea

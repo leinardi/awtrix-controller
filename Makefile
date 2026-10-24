@@ -31,7 +31,7 @@ MK_COMMON_VERSION     ?= v1
 MK_COMMON_DIR         := $(REPO_ROOT)/.mk
 
 # Shared snippets coming from make-common
-MK_COMMON_FILES       := docker.mk help.mk go.mk password.mk pre-commit.mk
+MK_COMMON_FILES       := docker.mk help.mk password.mk pre-commit.mk
 
 # Repo-local snippets that are NOT in make-common
 MK_LOCAL_FILES        := docker-run.mk audit-deps.mk verify.mk rust.mk
@@ -49,9 +49,6 @@ MK_COMMON_BOOTSTRAP := $(shell "$(MK_COMMON_BOOTSTRAP_SCRIPT)" \
 # Project-specific config
 # -----------------------------------------------------------------------------
 BIN_NAME     ?= awtrix-controller
-GO_CMD       ?= ./cmd/awtrix-controller
-GO_PKG       ?= ./...
-DIST_DIR     ?= dist
 
 # Docker build settings
 DOCKERFILE     ?= deployments/docker/Dockerfile

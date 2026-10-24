@@ -119,8 +119,8 @@ async fn initial_mode_night_at_2am() {
     assert_eq!(controller.current_mode(), Mode::Night);
 }
 
-/// Go: `TestDayToNightTransitionTC02`. Extended to the following sunrise, which the Go test's
-/// manual timer could not reach.
+/// Go: `TestDayToNightTransitionTC02`. Extended to the following sunrise, which the manual timer
+/// of the Go original could not reach.
 #[tokio::test(start_paused = true)]
 async fn day_to_night_transition() {
     let utc = TimeZone::UTC;

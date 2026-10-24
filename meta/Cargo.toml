@@ -13,6 +13,9 @@ publish = false
 workspace = true
 
 [dependencies]
+regex = "1.13.1"
 
 [dev-dependencies]
+serde_yaml_ng = "0.10"
+tempfile = "3.27.0"
 toml = "1.1.8"
