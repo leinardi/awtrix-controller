@@ -159,6 +159,10 @@ Rust tutorial. Seen in: awtrix-controller (a small MQTT broker and automation co
   not move) still reads just before the boundary, so nothing changes and the next boundary,
   computed from this one, skips the transition → evaluate at `max(clock.now(), due)`. (test with
   a frozen clock)
+- Under a paused tokio clock a test waiting for something that never happens does not time out:
+  a recurring job keeps the runtime auto-advancing, so the test spins forever instead of failing
+  → bound such waits with `tokio::time::timeout`, and move fixture timestamps with the clock when
+  a recurring job reads "now". (weather controller tests)
 - Give shutdown one overall deadline and hand each step only what remains; never a fresh grace
   period per step, never sequential per-session waits. (plan review)
 

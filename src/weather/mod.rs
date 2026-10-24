@@ -23,14 +23,19 @@
  */
 
 //! The Open-Meteo forecast: fetching the `minutely_15` data, mapping WMO weather codes to display
-//! overlays, detecting severe-weather events, and the notification state of each event type.
+//! overlays, detecting severe-weather events, the notification state of each event type, and the
+//! controller that polls and publishes them.
 
+mod controller;
 mod events;
 mod fetch;
 mod mapping;
+mod simulate;
 mod state;
 
+pub use controller::{Controller, FetchFunction, FetchFuture, PublishFuture, Publisher};
 pub use events::{EventCandidate, Severity, detect_events};
 pub use fetch::{DEFAULT_BASE_URL, FetchError, Fetcher, ForecastPoint};
 pub use mapping::{EventType, select_overlay, wmo_to_overlay};
+pub use simulate::simulate_fetch;
 pub use state::{EventState, StateManager};
