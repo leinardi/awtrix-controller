@@ -7,10 +7,11 @@ that way.
 
 ## What a release produces
 
-- Two static binaries, `awtrix-controller-linux-amd64` and `awtrix-controller-linux-arm64`, built
-  with `CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false` and the version, commit and commit date
-  compiled in, plus `checksums.txt` over both. All three are attached to the GitHub release, and
-  each binary has a
+- Two static binaries, `awtrix-controller-linux-amd64` and `awtrix-controller-linux-arm64`,
+  cross-compiled for the `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets by
+  `cargo zigbuild --release --locked`, with the build paths remapped and the version, commit and
+  commit date compiled in, plus `checksums.txt` over both. All three are attached to the GitHub
+  release, and each binary has a
   [build provenance attestation](https://docs.github.com/actions/security-guides/using-artifact-attestations)
   from the release workflow (verify one with
   `gh attestation verify <binary> --repo leinardi/awtrix-controller --signer-workflow leinardi/awtrix-controller/.github/workflows/release.yaml`).
@@ -54,13 +55,16 @@ Semantic versioning, derived from
   so the `0.x` caveat of `svu` (a breaking change before `1.0.0` jumping straight to `1.0.0`) does
   not apply here.
 
+The release job installs `svu` itself rather than through an action: the `linux_amd64` archive of
+the release `SVU_VERSION` (`v3.4.1`), checked against `SVU_SHA256` before it is unpacked.
+
 Everything else (`build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`)
 bumps nothing, so a performance improvement, refactor or revert that users should receive is
 committed as a `fix` (or `feat`); `perf`, `refactor`, `style` and `revert` are for changes
 deliberately not meant to trigger a release. When no commit since the last release is a `feat`, a
 `fix` or a breaking change, a run with no version **fails** with *"No feat/fix or breaking-change
 commit since `<tag>`, so there is nothing to bump. Re-run with an explicit version to force one."*
-Dependabot's Go module updates are committed as `fix(deps)`, so a dependency bump alone is enough
+Dependabot's Cargo updates are committed as `fix(deps)`, so a dependency bump alone is enough
 for a patch release; its GitHub Actions, pre-commit and Docker updates stay `chore(deps)` and bump
 nothing, so a Docker base-image bump that carries a security fix needs an explicit version to ship.
 
@@ -112,10 +116,11 @@ the tagged commit (see [Recovering a failed publish](#recovering-a-failed-publis
 1. **Refuse anything but `main`.** The `guard` job fails, rather than skips, when `github.ref` is
    not `refs/heads/main`, and every other job waits on it. `workflow_dispatch` lets the caller pick
    any branch, and the release job holds `contents: write`, `packages: write` and an OIDC identity.
-2. **Verify.** `test` (`make go-vet`, then `go test -race ./...`) and `audit` (`make audit-deps`:
-   govulncheck). They are copies of the CI jobs rather than a call into `ci.yaml`, so a release
-   never depends on which pull request last ran CI, and both take Go from `go.mod`, the toolchain
-   the release builds with.
+2. **Verify.** `test` (clippy, then `cargo test --workspace --locked` with
+   `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`) and `audit` (`cargo deny check`: advisories, licences,
+   bans and sources). They are copies of the CI jobs rather than a call into `ci.yaml`, so a release
+   never depends on which pull request last ran CI, and `test` uses the pinned Rust toolchain
+   (`1.98.0`) the release builds with.
 3. **Resolve the version**, as in [Versioning](#versioning).
 4. **Check the tag.** If `refs/tags/<version>` already exists on the remote, the run continues only
    when it points at `HEAD`, as a recovery. Pointing anywhere else is a hard failure. The tag is
@@ -168,8 +173,9 @@ described under [Recovery guarantees](#recovery-guarantees).
 
 Everything stamped into an artifact comes from the commit rather than from the clock: the version, a
 fixed seven-character commit prefix, the commit date as the build date, and the commit time as
-BuildKit's `SOURCE_DATE_EPOCH`. The binaries are built with `-trimpath` and the exact Go version
-from `go.mod`, so a re-run of the same commit produces the same bytes, which is what lets a recovery
+BuildKit's `SOURCE_DATE_EPOCH`. The binaries are built with the pinned Rust toolchain, zig and
+cargo-zigbuild, `Cargo.lock` (`--locked`), and `--remap-path-prefix` for the checkout and the cargo
+home, so a re-run of the same commit produces the same bytes, which is what lets a recovery
 check published assets by sha256. The image is not byte-reproducible: its provenance records the
 build itself, so two builds of the same commit have different index digests. That is why a recovery
 never compares a rebuilt index with a published one. The `dhi.io` base images in
@@ -327,10 +333,22 @@ Dockerfile frontend (`# syntax=docker/dockerfile:…`) is pinned by digest too, 
 pulls a frontend that moved under its tag. Dependabot's `docker` ecosystem does not update that
 syntax line, nor the images in the workflow's `env`, so they are bumped by hand: resolve the new
 index digest with `docker buildx imagetools inspect <image>:<tag>` and replace the tag and the
-digest together. `svu` (`SVU_VERSION`) and Trivy (`TRIVY_VERSION`, in both `release.yaml` and
-`scheduled-scan.yaml`) are pinned as versions and bumped by hand for the same reason. Pinning Trivy
-does not pin what it knows: its vulnerability database is fetched at run time, which is the point of
-scanning at release time.
+digest together. `svu` (`SVU_VERSION` with its `SVU_SHA256`) and Trivy (`TRIVY_VERSION`, in both
+`release.yaml` and `scheduled-scan.yaml`) are pinned as versions and bumped by hand for the same
+reason. Pinning Trivy does not pin what it knows: its vulnerability database is fetched at run time,
+which is the point of scanning at release time.
+
+**The Rust build is pinned the same way.** Every job takes Rust `1.98.0` from
+`dtolnay/rust-toolchain`, the version `rust-toolchain.toml` names. The release job gets zig and
+cargo-zigbuild from [`.github/actions/setup-zigbuild`](../.github/actions/setup-zigbuild/action.yaml),
+which downloads their release archives and checks each against a sha256 before using it, at the
+versions the Dockerfile's build stage pins (`ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`). That stage
+runs on `dhi.io/rust` (`RUST_VERSION`, a `1.98` patch release), downloads zig and the target's musl
+`rust-std`, each checked against its sha256, and builds cargo-zigbuild with
+`cargo install --locked`. Dependabot moves none of these: the `dhi.io/rust` tag, `RUST_VERSION` and
+the `rust-std` digests are bumped together by hand, as are the zig and cargo-zigbuild pins, and the
+`toolchain` meta-test fails when the Rust line, the image patch or the two copies of a zig pin
+disagree.
 
 **Workflow tokens are read-only by default.** Each workflow sets `permissions: contents: read` at
 the top, and only the jobs that need more say so: the reviewdog jobs in `ci.yaml` add
@@ -342,10 +360,11 @@ run too: `leinardi/gha-pre-commit-reviewdog-actions` from `v1.0.1` and
 `leinardi/gh-reusable-workflows` from `v1.2.1`, the releases pinned here. The warm-up workflow
 matters more than it looks. It declares `permissions: contents: read`, but every step in a job also
 gets the Actions cache token, which can write any cache key, and the warm-up runs on `main`, so it
-writes into the `main` cache scope. The release job restores that scope twice: `actions/setup-go`
-with `cache: true` restores the Go module and build caches, and the image build reads the BuildKit
-layer cache with `cache-from: type=gha`. A moved tag inside the warm-up could therefore poison what
-the release builds, attests and signs. Keep the nested pins in both repositories current, and bump
+writes into the `main` cache scope. The release's `test` job restores the cargo build cache with
+`Swatinem/rust-cache`, and the image build reads the BuildKit layer cache with `cache-from:
+type=gha`. A moved tag inside the warm-up could therefore poison what the release tests, builds,
+attests and signs. The release job's own binary build restores no cargo cache: it compiles from
+`Cargo.lock` and the crates registry. Keep the nested pins in both repositories current, and bump
 the pins here when they release.
 
 ## One-time setup
@@ -359,7 +378,7 @@ protection rules.
 1. **Restrict it to `main`** with a deployment branch rule, as a server-side second line of defence
    behind the `guard` job. Add required reviewers too if a release should wait for a human. Leave
    the "Immutable tags" ruleset exactly as it is; the release job is written for it.
-2. **Give it the `dhi.io` credentials**: the image's build stage pulls `dhi.io/golang` and its
+2. **Give it the `dhi.io` credentials**: the image's build stage pulls `dhi.io/rust` and its
    runtime stage `dhi.io/static`, so the job needs the `DHI_TOKEN` secret and the `DHI_USERNAME`
    variable. Add both **to the environment**, not to the repository, so only a job that passed the
    environment's rules can read them:
@@ -389,10 +408,10 @@ repository are managed as code in [gh-leinardi-iac](https://github.com/leinardi/
 (`default_branch_required_checks` in `stacks/github-repos/repos.tf`), so add the checks there, not
 with `gh api`: a rule added by hand is reverted by the next `tofu apply`. GitHub can only require a
 check whose context it has already seen, so add them once every job has run at least once on a pull
-request: `go-test`, `go-vulncheck`, `conventional-commits`, `pre-commit-hooks`, `actionlint` and
-`release-scripts`. `markdownlint`, `shellcheck` and `yamllint` stay optional. None of these
-workflows uses path filters, so every required check reports on every pull request and none can
-leave a pull request waiting forever.
+request: `rust`, `conventional-commits`, `pre-commit-hooks`, `actionlint` and `release-scripts`.
+`markdownlint`, `shellcheck` and `yamllint` stay optional. None of these workflows uses path
+filters, so every required check reports on every pull request and none can leave a pull request
+waiting forever.
 
 Repository admins keep the ruleset's pull-request bypass, so an admin can still merge a pull request
 whose check fails. That is a deliberate escape hatch, not a gap in the check.

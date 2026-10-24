@@ -2,8 +2,16 @@
 
 ## Prerequisites
 
-- Go 1.26+
+- Rust 1.98: [rustup](https://rustup.rs/) installs the `1.98.0` toolchain that
+  `rust-toolchain.toml` pins, with clippy and rustfmt, on the first `cargo` command
+- [cargo-deny](https://github.com/EmbarkStudios/cargo-deny), for `make audit-deps` and
+  `make rust-deny` (`cargo install --locked cargo-deny`)
+- [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) and [zig](https://ziglang.org/),
+  only to build the static musl binaries the releases ship outside Docker (with the target added by
+  `rustup target add x86_64-unknown-linux-musl`)
 - Docker, for building the container image
+- [hadolint](https://github.com/hadolint/hadolint), for the Dockerfile meta-tests (they skip
+  without it, unless `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`)
 - [`pre-commit`](https://pre-commit.com/): install the hooks once with `make pre-commit-install`. It
   installs both the `pre-commit` and the `commit-msg` hooks, so commit messages are checked when you
   commit, not when the release runs.
@@ -11,25 +19,29 @@
 ## Building and testing
 
 ```bash
-make go-build      # static binary into ./dist/
-make go-test       # go test -race ./...
-make verify-go     # build, test, vet and golangci-lint in one go
-make audit-deps    # govulncheck -test over every package (network required)
-make docker-build  # the container image, for the host's architecture
+make rust-build      # cargo build of the whole workspace, every target
+make rust-test       # cargo test --workspace, the meta-tests in meta/ included
+make rust-fmt        # format the code (rust-fmt-check only checks)
+make rust-clippy     # clippy over the workspace, warnings as errors
+make verify          # rust-build, rust-fmt-check, rust-clippy and rust-test in one go
+make rust-run ARGS="--config config.yaml"  # run with the version strings set from git
+make audit-deps      # cargo-deny against the RustSec advisories (network required)
+make rust-deny       # every cargo-deny check: advisories, licences, bans, sources (network required)
+make docker-build    # the container image, for the host's architecture
 ```
 
 ## Linting
 
 ```bash
-make check         # the full pre-commit suite on every file (golangci-lint, hadolint, markdownlint, shellcheck, ...)
+make check         # the full pre-commit suite on every file (rustfmt, clippy, hadolint, markdownlint, shellcheck, ...)
 make check-stage   # the same, on the staged files only
 ```
 
-CI runs the same hooks, the tests and the vulnerability scan on every pull request and every push to
-`main` (`.github/workflows/ci.yaml`).
+CI runs the same hooks, the tests and cargo-deny on every pull request and every push to `main`
+(`.github/workflows/ci.yaml`).
 
 Every source file carries the MIT license header (the `check-license-headers` hook), and every
-`//nolint`, `# shellcheck disable=` or `# hadolint ignore=` is counted against
+`#[expect(...)]`, `#[allow(...)]`, `# shellcheck disable=` or `# hadolint ignore=` is counted against
 `.suppressions-baseline` (the `check-suppressions` hook): see
 [AGENTS.md](AGENTS.md#suppressions-are-ratcheted).
 
