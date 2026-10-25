@@ -25,15 +25,10 @@
 ifndef MK_LOCAL_VERIFY_INCLUDED
 MK_LOCAL_VERIFY_INCLUDED := 1
 
-# Local snippet (NOT part of make-common): one command that runs every Go check a change has to
-# pass, for fast agent and developer feedback. go-lint comes from make-common's go.mk and runs the
-# same pinned golangci-lint hook as pre-commit and CI. There are no build-tagged packages, so the
-# plain go-vet sees every file.
-
-.PHONY: verify-go
-verify-go: go-build go-test go-vet go-lint ## Verify the Go code (build, race tests, vet, lint)
+# Local snippet (NOT part of make-common): one command that runs every check a change has to pass,
+# for fast agent and developer feedback. verify-rust lives in rust.mk.
 
 .PHONY: verify
-verify: verify-go ## Verify everything
+verify: verify-rust ## Verify everything
 
 endif  # MK_LOCAL_VERIFY_INCLUDED

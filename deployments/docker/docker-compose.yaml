@@ -13,8 +13,10 @@ services:
         protocol: tcp
         mode: ingress
 
-    # Minimal, explicit args. Override --config if the file lives elsewhere.
-    command: [ "--config", "/etc/awtrix-controller/config.yaml" ]
+    # The image's entrypoint is the binary, so these are its flags: --config (-c), --log-level (-l,
+    # debug|info|warn|error) and --log-format (text|json, overriding the config's log_format). Long
+    # flags take two dashes. Override --config if the file lives elsewhere.
+    command: [ "--config", "/etc/awtrix-controller/config.yaml", "--log-level", "info" ]
 
     restart: unless-stopped
 

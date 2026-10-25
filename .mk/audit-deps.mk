@@ -26,29 +26,15 @@ ifndef MK_LOCAL_AUDIT_DEPS_INCLUDED
 MK_LOCAL_AUDIT_DEPS_INCLUDED := 1
 
 # Local snippet (NOT part of make-common): check the dependencies this repository ships against
-# known vulnerabilities, with the tool the Go ecosystem publishes.
+# the RustSec advisory database, with cargo-deny, configured in deny.toml.
 #
-# What this is and is not. govulncheck is source-aware: it reports a vulnerable module only when
-# the build actually reaches the affected symbol, so it answers "is this repository exposed", not
-# "does a vulnerable version appear in the graph".
-#
-# govulncheck runs with -test, so the test packages count as entry points too: a vulnerable
-# symbol reached only from a test (a test helper, a dependency only the meta-tests under test/
-# import) is reported as well, rather than being invisible to the scan.
-#
-# It needs the network, and govulncheck over every package is too slow to run on every Go change.
-# This target is the one that is run deliberately, whenever go.mod or go.sum change.
-#
-# The version is pinned so two runs mean the same thing. Bump it deliberately.
-
-GOVULNCHECK_VERSION ?= v1.8.0
-GOVULNCHECK        ?= golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+# cargo-deny is not reachability-aware: any advisory against a crate in the graph counts, the
+# dev-dependencies included, which is why deny.toml's ignores each carry a reason. It needs the
+# network to fetch the advisory database, so this is the target run deliberately whenever
+# Cargo.toml or Cargo.lock change (the pre-commit hook and CI run it too).
 
 .PHONY: audit-deps
-audit-deps: audit-deps-go ## Scan Go dependencies for known vulnerabilities (network required)
-
-.PHONY: audit-deps-go
-audit-deps-go: ## Run the pinned govulncheck over every Go package
-	$(GO) run $(GOVULNCHECK) -test ./...
+audit-deps: ## Check every Rust dependency against the RustSec advisories (cargo-deny; network required)
+	$(CARGO) deny check advisories
 
 endif  # MK_LOCAL_AUDIT_DEPS_INCLUDED

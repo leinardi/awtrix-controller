@@ -1,0 +1,18 @@
+# Applies to every workspace member: clippy reads the clippy.toml of the workspace root.
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+# min_ident_chars: single-letter names are refused except these, the coordinates of the Awtrix
+# draw commands.
+allowed-idents-below-min-chars = ["x", "y"]
+
+# Scheduling and window code reads the time from the injected clock, so the tests can drive it.
+# Only the clock module and the debug weather simulation read the wall clock, each through an
+# #[expect(clippy::disallowed_methods, reason = "...")].
+disallowed-methods = [
+    { path = "jiff::Timestamp::now", reason = "read the time from the injected Clock" },
+    { path = "jiff::Zoned::now", reason = "read the time from the injected Clock" },
+    { path = "std::time::SystemTime::now", reason = "read the time from the injected Clock" },
+    { path = "std::time::Instant::now", reason = "read the time from the injected Clock" },
+]

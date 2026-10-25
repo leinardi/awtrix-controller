@@ -15,23 +15,14 @@ desktop.ini
 *.swp
 *~
 
-# Go build and test outputs
+# Build outputs and profiles
 /dist/
 /bin/
 /build/
-/coverage.out
-/coverage.html
-*.test
-*.out
 *.prof
-*.pprof
-*.coverprofile
+*.profraw
+*.profdata
 profile.*
-
-# Go workspaces and vendoring
-go.work
-go.work.sum
-vendor/
 
 # Tool caches
 .cache/
@@ -41,3 +32,6 @@ vendor/
 .claude/*
 !.claude/settings.json
 !.claude/skills
+
+# Rust build output
+/target/

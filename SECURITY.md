@@ -23,7 +23,7 @@ otherwise.
 In scope: the awtrix-controller binary, the container image published to GHCR, the release
 artifacts, and the workflows that build and publish them.
 
-Out of scope: vulnerabilities in the Awtrix3 firmware, the comqtt broker library and Open-Meteo and
+Out of scope: vulnerabilities in the Awtrix3 firmware, the rmqtt broker library and Open-Meteo and
 in the base images, which are reported upstream. A base image or dependency vulnerability that
 affects a published release is still worth reporting here if the weekly scheduled scan has not
 caught it.
