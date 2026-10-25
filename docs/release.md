@@ -64,9 +64,10 @@ committed as a `fix` (or `feat`); `perf`, `refactor`, `style` and `revert` are f
 deliberately not meant to trigger a release. When no commit since the last release is a `feat`, a
 `fix` or a breaking change, a run with no version **fails** with *"No feat/fix or breaking-change
 commit since `<tag>`, so there is nothing to bump. Re-run with an explicit version to force one."*
-Dependabot's Cargo updates are committed as `fix(deps)`, so a dependency bump alone is enough
-for a patch release; its GitHub Actions, pre-commit and Docker updates stay `chore(deps)` and bump
-nothing, so a Docker base-image bump that carries a security fix needs an explicit version to ship.
+Dependabot's Cargo updates of production dependencies are committed as `fix(deps)`, so a
+dependency bump alone is enough for a patch release; its dev-dependency (test-only), GitHub
+Actions, pre-commit and Docker updates stay `chore(deps)` and bump nothing, so a Docker base-image
+bump that carries a security fix needs an explicit version to ship.
 
 Whether derived or typed, the version must be **higher than every version already released**. Tags
 here are immutable, so publishing a `v1.9.9` after `v1.10.0` would create a permanent lower tag. The
