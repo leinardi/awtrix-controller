@@ -191,7 +191,7 @@ waits on its own grace period, awaits a fetch, or kicks sessions one by one brea
 
 - The image (`deployments/docker/Dockerfile`) pins every base by tag (not by digest: dhi.io
   republishes its tags with security fixes), pins the `# syntax` frontend by digest, carries the
-  seven OCI labels `.hadolint.yaml` requires, and runs on `dhi.io/static`, relying on its non-root
+  seven OCI labels `droast.toml` requires, and runs on `dhi.io/static`, relying on its non-root
   default user (there is no explicit `USER`). The build stage cross-compiles a static musl binary
   with cargo-zigbuild, and every download in it (zig, `rust-std`) is checked against a sha256.
   Adding root, a shell or a package manager to the runtime stage, a base on `latest` or with no
@@ -262,7 +262,7 @@ which spec line retires this surface, and does it change in this diff? If none, 
 
 ### (c) A new suppression has to show its work
 
-Any new `#[expect(...)]`, `# shellcheck disable=` or `# hadolint ignore=` must explain why the
+Any new `#[expect(...)]`, `# shellcheck disable=` or `# droast ignore=` must explain why the
 fix does not apply, and arrives with `.suppressions-baseline` updated in the same commit
 (`scripts/check-suppressions.sh --update`); a baseline raised without a reason in the diff is a
 finding too: for `too_many_lines`, what broke when the split was tried; for a cast, why the range
@@ -302,7 +302,7 @@ confirmed finding:
 | --- | --- |
 | any `**/*.rs` | `make verify` (build, rustfmt check, clippy with `-D warnings`, tests), then `make check` |
 | `Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify` and `make rust-deny` (cargo-deny; network required) |
-| `deployments/docker/Dockerfile` | hadolint via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
+| `deployments/docker/Dockerfile`, `droast.toml` | droast via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
 | `.github/scripts/**` | `bash .github/scripts/binary-attestation-status.test.sh` |
 | `meta/**`, `scripts/check-*.sh`, `.suppressions-baseline` | `cargo test --locked -p meta` with `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |

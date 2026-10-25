@@ -7,7 +7,7 @@
   integration file: `cargo test --locked -p awtrix-controller --test broker`; a meta-test:
   `cargo test --locked -p meta --test docs`.
 - Meta-tests requiring tools: `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`
-  (missing hadolint becomes a failure instead of a skip).
+  (missing droast or shellcheck becomes a failure instead of a skip).
 - `make check` (pre-commit, all files) / `make check-stage` (staged only).
 - `make audit-deps` (cargo deny advisories, network), `make rust-deny` (all cargo-deny checks).
 - `make rust-run ARGS="--config config.yaml"` (version env vars from git).

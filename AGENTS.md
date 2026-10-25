@@ -72,16 +72,20 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the zig, cargo-zigbuild and hadolint pins, no vacuous flags),
-  `dockerfiles.rs` (the image's stages, downloads, labels and frontend, and hadolint's label
-  schema), `docs.rs` (Markdown links), `license_headers.rs` and `suppressions.rs` (the two scripts
-  below), and `workspace_lints.rs` (every member opts into the workspace lints). `meta/src/` holds
-  their helpers: `repo` reads tracked files, `gitenv` isolates scratch-repository git commands,
-  `toolgate` finds hadolint, `dockerfile` parses the Dockerfile and `links` checks Markdown.
+  version everywhere, the zig, cargo-zigbuild, droast and ShellCheck pins, no vacuous flags),
+  `dockerfiles.rs` (the image's stages, downloads, labels and frontend, and droast's label schema),
+  `docs.rs` (Markdown links), `license_headers.rs` and `suppressions.rs` (the two scripts below),
+  and `workspace_lints.rs` (every member opts into the workspace lints). `meta/src/` holds their
+  helpers: `repo` reads tracked files, `gitenv` isolates scratch-repository git commands,
+  `toolgate` finds droast and shellcheck, `dockerfile` parses the Dockerfile and `links` checks
+  Markdown.
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
   digest; the build stage cross-compiles a static musl binary with cargo-zigbuild), a compose
   example and the sample config.
-- `.github/actions/` — `setup-hadolint` and `setup-zigbuild`, pinned and sha256-checked.
+- `.github/actions/` — `setup-droast` (the droast the meta-tests drive), `setup-shellcheck` (the
+  ShellCheck droast's bridge runs) and `setup-zigbuild`, pinned and sha256-checked.
+- `droast.toml` — the Dockerfile Roast policy: the seven required OCI labels, strict labels, a
+  required ShellCheck bridge.
 - `docs/release.md` — how a release is cut and recovered.
 - `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/rustfmt-on-edit.sh` (the
   Claude Code edit hook in `.claude/settings.json`) and make-common's `bootstrap-mk-common.sh`.
@@ -102,7 +106,7 @@ Run before considering an edit done. `make check` applies to every row.
 | `**/*.rs` | `make verify`, then `make check-stage` |
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
-| `deployments/docker/Dockerfile`, `.hadolint.yaml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (hadolint runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
+| `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
 | `scripts/check-suppressions.sh`, `.suppressions-baseline` | `cargo test --locked -p meta --test suppressions` |
 | `scripts/check-license-headers.sh` | `cargo test --locked -p meta --test license_headers` |
 | `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
@@ -155,10 +159,10 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   the MIT license header, with the year of the file's first commit (copy it from any Rust or shell
   file, or use the IntelliJ MIT copyright profile). The `check-license-headers` pre-commit hook
   (`scripts/check-license-headers.sh`) checks the whole tree; the make-common files are exempt.
-- A new `#[expect]`, `# shellcheck disable=` or `# hadolint ignore=` explains why the fix does not
-  apply here, not which rule fired.
+- A new `#[expect]`, `# shellcheck disable=` or `# droast ignore=` explains why the fix does not
+  apply here, not which rule fired (droast also refuses one without a `reason="..."`).
 - `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` (set by the `rust` CI job and the release's `test` job)
-  turns a missing hadolint into a meta-test failure instead of a skip.
+  turns a missing droast or shellcheck into a meta-test failure instead of a skip.
 
 ## Suppressions are ratcheted
 
@@ -166,7 +170,7 @@ Every in-file suppression is counted per rule against `.suppressions-baseline` b
 `check-suppressions` pre-commit hook (`scripts/check-suppressions.sh`), in five families:
 `expect/<lint>` (`#[expect(...)]`, one count per lint it names), `allow/<lint>` (`#[allow(...)]`,
 which the lints refuse in Rust code, so it stays at zero), `shellcheck-disable/<code>`,
-`hadolint-ignore/<rule>` and `hadolint-global-ignore/<rule>`.
+`droast-ignore/<rule>` and `droast-global-ignore/<rule>`.
 
 Adding one is allowed, but never silently: the hook refuses a commit that adds a suppression line
 without changing the baseline in the same commit, including a swap or a moved file that leaves the

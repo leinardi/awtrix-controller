@@ -6,7 +6,7 @@ every row. Most common:
 - `**/*.rs`: `make verify`, then `make check-stage`.
 - `Cargo.toml`/`Cargo.lock`/`deny.toml`: `make verify`, `make rust-deny`,
   `cargo test --locked -p meta --test toolchain --test workspace_lints`.
-- Dockerfile/.hadolint/.dockerignore: `cargo test --locked -p meta --test dockerfiles --test
+- Dockerfile/droast.toml/.dockerignore: `cargo test --locked -p meta --test dockerfiles --test
   toolchain`, `make docker-build`.
 - `.github/**`: `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test
   toolchain --test dockerfiles`.

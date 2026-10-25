@@ -383,9 +383,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the prerequisites and the full list.
 ## CI / Release
 
 - **CI** (`.github/workflows/ci.yaml`): on every pull request and every push to `main`, rustfmt,
-  clippy, the tests and cargo-deny, every pre-commit hook on every file (hadolint, dclint,
-  markdownlint, shellcheck, yamllint, …), and on pull requests a Conventional Commits check of
-  every commit; `ci-result` is the one check that stands for all of them.
+  clippy, the tests and cargo-deny, every pre-commit hook on every file
+  ([droast](https://github.com/immanuwell/dockerfile-roast), dclint, markdownlint, shellcheck,
+  yamllint, …), and on pull requests a Conventional Commits check of every commit; `ci-result` is
+  the one check that stands for all of them.
 - **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version
   derived from the commits when left empty. It builds static binaries for `linux/amd64` and
   `linux/arm64` and a multi-arch image, scans the image with Trivy before tagging, then publishes

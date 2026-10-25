@@ -55,7 +55,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # curl and xz fetch and unpack zig and the standard libraries; nothing from this stage but the
 # binary ships. Unpinned: dhi.io republishes this tag with a refreshed package index, which would
 # break any pinned version, and the download each tool makes is checked by its own sha256.
-# hadolint ignore=DL3008
+# droast ignore=DF005 reason="a pin breaks when dhi.io refreshes the tag's package index"
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
 	&& rm -rf /var/lib/apt/lists/*
@@ -115,7 +115,7 @@ ARG VERSION="dev"
 ARG COMMIT="none"
 ARG DATE="unknown"
 
-# The seven OCI labels .hadolint.yaml requires; version, revision and created come from the same
+# The seven OCI labels droast.toml requires; version, revision and created come from the same
 # build arguments the binary is stamped with.
 LABEL org.opencontainers.image.title="awtrix-controller" \
 	org.opencontainers.image.description="Awtrix3 MQTT Controller" \
