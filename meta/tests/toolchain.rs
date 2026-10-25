@@ -24,8 +24,8 @@
 
 //! The repository's tooling pins: one Rust line across rust-toolchain.toml, Cargo.toml, the image
 //! and every CI toolchain step; the image's toolchain patch and its musl standard libraries; one
-//! zig and one cargo-zigbuild between the image and CI; one hadolint between the hook and CI; and
-//! no flag that makes a gate pass on nothing.
+//! zig and one cargo-zigbuild between the image and CI; one droast and one shellcheck between
+//! the hooks and CI; and no flag that makes a gate pass on nothing.
 
 use std::collections::BTreeMap;
 
@@ -320,20 +320,40 @@ fn cargo_zigbuild_is_one_version() {
     );
 }
 
-/// Go: `TestHadolintIsOneVersion`. The hadolint hook runs the system binary, so the version CI
-/// installs is the one that lints; it must follow the hook's rev, which Dependabot moves.
+/// The meta crate's Dockerfile test runs the droast CI installs; it must be the release the
+/// pre-commit hook builds from source, whose rev Dependabot moves.
 #[test]
-fn hadolint_is_one_version() {
+fn droast_is_one_version() {
     expect_one_value(
-        "hadolint",
+        "droast",
         &[
             source(
                 ".pre-commit-config.yaml",
-                r"repo: https://github\.com/hadolint/hadolint\s+rev:\s*(v[\d.]+)",
+                r"repo: https://github\.com/immanuwell/dockerfile-roast\s+rev:\s*([\d.]+)",
             ),
             source(
-                ".github/actions/setup-hadolint/action.yaml",
-                r#"HADOLINT_VERSION:\s*["']?(v[\d.]+)"#,
+                ".github/actions/setup-droast/action.yaml",
+                r#"DROAST_VERSION:\s*["']?([\d.]+)"#,
+            ),
+        ],
+    );
+}
+
+/// droast's required shell-linter bridge runs the shellcheck CI installs, which must be the
+/// release the shellcheck-py hook wraps. shellcheck-py adds a fourth component of its own
+/// (v0.11.0.1), so only the first three are compared.
+#[test]
+fn shellcheck_is_one_version() {
+    expect_one_value(
+        "shellcheck",
+        &[
+            source(
+                ".pre-commit-config.yaml",
+                r"repo: https://github\.com/shellcheck-py/shellcheck-py\s+rev:\s*(v\d+\.\d+\.\d+)",
+            ),
+            source(
+                ".github/actions/setup-shellcheck/action.yaml",
+                r#"SHELLCHECK_VERSION:\s*["']?(v\d+\.\d+\.\d+)"#,
             ),
         ],
     );

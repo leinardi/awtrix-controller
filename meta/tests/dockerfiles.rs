@@ -23,9 +23,11 @@
  */
 
 //! The shipped image: its one Dockerfile, the pinned frontend, the build and runtime stages, the
-//! labels and the platforms, and hadolint's enforcement of the label schema.
+//! labels and the platforms, and droast's enforcement of the label schema.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use meta::dockerfile::{self, Stage};
@@ -36,7 +38,7 @@ const SHIPPED_DIR: &str = "deployments/docker";
 const SHIPPED_DOCKERFILE: &str = "deployments/docker/Dockerfile";
 const RELEASE_WORKFLOW: &str = ".github/workflows/release.yaml";
 const DOCKER_FRAGMENT: &str = ".mk/docker.mk";
-const HADOLINT_CONFIG: &str = ".hadolint.yaml";
+const DROAST_CONFIG: &str = "droast.toml";
 const WANT_PLATFORMS: &str = "linux/amd64,linux/arm64";
 
 /// The seven OCI labels of the runtime stage; an empty value means any non-empty one.
@@ -274,30 +276,41 @@ fn platforms() {
     assert_eq!(platforms.as_deref(), Some(WANT_PLATFORMS));
 }
 
-fn run_hadolint(hadolint: &std::path::Path, dockerfile: &std::path::Path) -> Output {
-    Command::new(hadolint)
-        .arg("--no-color")
-        .arg("--config")
-        .arg(repo::path(HADOLINT_CONFIG))
-        .arg(dockerfile)
-        .output()
-        .unwrap_or_else(|error| panic!("run hadolint: {error}"))
+/// The label test, by name: the gate tests below run it again in a child process.
+const LABEL_TEST: &str = "droast_enforces_the_labels";
+
+/// The path of droast, after checking that the `shellcheck` its required bridge runs is on `PATH`
+/// too. `None` when either is missing and the test should return early.
+fn lookup_droast() -> Option<PathBuf> {
+    let droast = toolgate::lookup(toolgate::DROAST)?;
+    toolgate::lookup(toolgate::SHELLCHECK)?;
+    Some(droast)
 }
 
-/// Go: `TestHadolintEnforcesTheLabels`. hadolint, with the repository's configuration, passes the
-/// shipped Dockerfile and fails the same file without one of the seven labels with DL3049. Without
-/// the error override a missing label is only info, which the failure threshold lets through.
+fn run_droast(droast: &Path, dockerfile: &Path) -> Output {
+    Command::new(droast)
+        .arg("--config")
+        .arg(repo::path(DROAST_CONFIG))
+        .arg(dockerfile)
+        .output()
+        .unwrap_or_else(|error| panic!("run droast: {error}"))
+}
+
+/// Go's label test, now driving droast. droast, with the repository's configuration, passes the
+/// shipped Dockerfile and fails the same file without one of the seven labels with DF074, a
+/// missing required label, which is an error.
 #[test]
-fn hadolint_enforces_the_labels() {
-    let Some(hadolint) = toolgate::lookup(toolgate::HADOLINT) else {
+fn droast_enforces_the_labels() {
+    let Some(droast) = lookup_droast() else {
         return;
     };
 
-    let output = run_hadolint(&hadolint, &repo::path(SHIPPED_DOCKERFILE));
+    let output = run_droast(&droast, &repo::path(SHIPPED_DOCKERFILE));
     assert!(
         output.status.success(),
-        "hadolint rejects {SHIPPED_DOCKERFILE}:\n{}",
-        String::from_utf8_lossy(&output.stdout)
+        "droast rejects {SHIPPED_DOCKERFILE}:\n{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let shipped = repo::read(SHIPPED_DOCKERFILE);
@@ -313,11 +326,73 @@ fn hadolint_enforces_the_labels() {
     let scratch_dockerfile = scratch.path().join("Dockerfile");
     fs::write(&scratch_dockerfile, without_version).expect("write the fixture");
 
-    let output = run_hadolint(&hadolint, &scratch_dockerfile);
+    let output = run_droast(&droast, &scratch_dockerfile);
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(
-        !output.status.success() && text.contains("DL3049"),
-        "hadolint accepted a Dockerfile without the version label:\n{text}"
+        !output.status.success() && text.contains("DF074"),
+        "droast accepted a Dockerfile without the version label:\n{text}"
+    );
+}
+
+/// Runs the label test alone in a child process whose `PATH` holds only a stub `droast`, so
+/// droast is found and the `shellcheck` its bridge needs is not; `require` sets the toolgate
+/// variable to 1, otherwise it is unset.
+fn run_label_test_without_shellcheck(require: bool) -> Output {
+    let path = tempfile::tempdir()
+        .unwrap_or_else(|error| panic!("create the scratch PATH directory: {error}"));
+    let stub = path.path().join(toolgate::DROAST);
+    fs::write(&stub, "#!/bin/sh\nexit 0\n")
+        .unwrap_or_else(|error| panic!("write the stub droast: {error}"));
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755))
+        .unwrap_or_else(|error| panic!("make the stub droast executable: {error}"));
+
+    let test_binary =
+        std::env::current_exe().unwrap_or_else(|error| panic!("find the test binary: {error}"));
+    let mut command = Command::new(test_binary);
+    command
+        .args([LABEL_TEST, "--exact", "--nocapture", "--test-threads=1"])
+        .env("PATH", path.path());
+    if require {
+        command.env(toolgate::REQUIRE_ENV, "1");
+    } else {
+        command.env_remove(toolgate::REQUIRE_ENV);
+    }
+    command
+        .output()
+        .unwrap_or_else(|error| panic!("run {LABEL_TEST} in a child process: {error}"))
+}
+
+/// The label test with droast but no shellcheck, outside CI: it returns early, passing, and says
+/// that it did not run and why.
+#[test]
+fn label_test_skips_without_shellcheck_by_default() {
+    let output = run_label_test_without_shellcheck(false);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() && stdout.contains("1 passed"),
+        "{LABEL_TEST} did not pass without shellcheck:\n{stdout}{stderr}"
+    );
+    assert!(
+        stderr.contains("shellcheck not found on PATH"),
+        "{LABEL_TEST} skipped without naming the missing shellcheck:\n{stderr}"
+    );
+}
+
+/// The label test with droast but no shellcheck, as CI runs it: a failure, not a skip.
+#[test]
+fn label_test_fails_without_shellcheck_when_tools_are_required() {
+    let output = run_label_test_without_shellcheck(true);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success() && stdout.contains("1 failed"),
+        "{LABEL_TEST} did not fail without shellcheck under {}=1:\n{stdout}{stderr}",
+        toolgate::REQUIRE_ENV
+    );
+    assert!(
+        format!("{stdout}{stderr}").contains("shellcheck is required"),
+        "{LABEL_TEST} failed for another reason than the missing shellcheck:\n{stdout}{stderr}"
     );
 }
 

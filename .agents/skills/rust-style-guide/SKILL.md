@@ -249,7 +249,7 @@ formats a `.rs` file after every edit in Claude Code, and the `cargo-fmt` pre-co
   parallel test runner (tracing caches callsite interest across threads).
 - A test that cancels a hung blocking call builds its runtime by hand and calls
   `shutdown_background()`; a `#[tokio::test]` runtime waits for the blocking task on drop.
-- A meta-test gated on a tool (hadolint) returns early when the tool is missing, unless
+- A meta-test gated on a tool (droast, shellcheck) returns early when the tool is missing, unless
   `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`, which turns it into a failure (CI sets it).
 
 ## 13. What to avoid

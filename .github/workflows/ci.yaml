@@ -46,8 +46,9 @@ jobs:
       - name: Install pre-commit
         run: pip install --no-cache-dir pre-commit==4.6.2
 
-      - name: Set up hadolint
-        uses: ./.github/actions/setup-hadolint
+      # droast's ShellCheck bridge runs the shellcheck on PATH: the pinned one, not the runner's.
+      - name: Set up ShellCheck
+        uses: ./.github/actions/setup-shellcheck
 
       # Restore only: pre-commit-warmup.yaml saves the entry on main under the same key.
       - name: Restore the pre-commit cache
@@ -112,9 +113,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The hadolint hook runs the system binary, which the runner does not have.
-      - name: Set up hadolint
-        uses: ./.github/actions/setup-hadolint
+      # droast's ShellCheck bridge runs the shellcheck on PATH: the pinned one, not the runner's.
+      - name: Set up ShellCheck
+        uses: ./.github/actions/setup-shellcheck
 
       - name: Run pre-commit hooks + reviewdog diff
         uses: leinardi/gha-pre-commit-reviewdog-actions/pre-commit-hooks@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
@@ -131,7 +132,7 @@ jobs:
             check-toml
             check-added-large-files
             dclint
-            hadolint
+            droast
 
   markdownlint:
     # Reports inline PR review comments over a diff range; a push or a manual dispatch has
@@ -249,8 +250,8 @@ jobs:
   # The Rust workspace: the same workspace-wide commands as make verify-rust and the pre-commit
   # hooks, plus cargo-deny (advisories, licences, bans and sources; the advisory database needs the
   # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's; with
-  # AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (hadolint) that is missing fails them
-  # instead of skipping them.
+  # AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (droast, shellcheck) that is missing fails
+  # them instead of skipping them.
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -268,8 +269,13 @@ jobs:
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      - name: Set up hadolint
-        uses: ./.github/actions/setup-hadolint
+      # The meta crate's Dockerfile test drives droast, whose ShellCheck bridge is required.
+      - name: Set up droast
+        uses: ./.github/actions/setup-droast
+
+      # droast's ShellCheck bridge runs the shellcheck on PATH: the pinned one, not the runner's.
+      - name: Set up ShellCheck
+        uses: ./.github/actions/setup-shellcheck
 
       - name: Check formatting
         run: cargo fmt --all --check

@@ -38,11 +38,16 @@ use std::path::{Path, PathBuf};
 /// The variable that turns a missing tool from an early, passing return into a failure.
 pub const REQUIRE_ENV: &str = "AWTRIX_CONTROLLER_REQUIRE_TOOLS";
 
-/// The Dockerfile linter the hadolint pre-commit hook runs from `PATH`.
-pub const HADOLINT: &str = "hadolint";
+/// Dockerfile Roast, the Dockerfile linter: the pre-commit hook builds its own, the meta-tests run
+/// the one on `PATH`.
+pub const DROAST: &str = "droast";
+
+/// The shell linter droast's bridge runs from `PATH`; `droast.toml` makes the bridge
+/// required, so droast fails without it.
+pub const SHELLCHECK: &str = "shellcheck";
 
 /// The closed list of tools a meta-test may be gated on.
-pub const TOOLS: &[&str] = &[HADOLINT];
+pub const TOOLS: &[&str] = &[DROAST, SHELLCHECK];
 
 /// The path of `tool` on `PATH`. `None`, with a note on standard error, when it is missing and
 /// the caller should return early.
