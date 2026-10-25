@@ -735,8 +735,11 @@ async fn bad_credentials_are_refused_on_every_listener() {
     assert_eq!(harness.connected_count(), 0);
 
     // The same packets with the right credentials are accepted, so the refusals above are real.
+    // Each version gets its own client ID: with a shared one, the second CONNECT can arrive while
+    // rmqtt is still tearing down the first session (its socket is dropped at the end of the loop
+    // body), and rmqtt then refuses it as server unavailable because the entry lock is held.
     for version in [Version::V311, Version::V5] {
-        let packet = connect_packet(version, "control", GOOD_CREDENTIALS);
+        let packet = connect_packet(version, &format!("control-{version:?}"), GOOD_CREDENTIALS);
         let mut stream = TcpStream::connect(harness.tcp).await.expect("TCP connect");
         stream.write_all(&packet).await.expect("send CONNECT");
         let mut connack = [0_u8; 4];
