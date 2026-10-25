@@ -96,7 +96,10 @@ WORKDIR /src
 COPY . .
 
 # The registry and the target directory are BuildKit caches, so the binary is copied out of them.
-RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-registry \
+# The registry cache is shared by both platforms' builds, which run in parallel: sharing=locked
+# serialises them, since two cargo processes unpacking the same crate into it fail with
+# "File exists". The target cache is per platform and needs no lock.
+RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-registry,sharing=locked \
 	--mount=type=cache,target=/src/target,id=cargo-target-${TARGETARCH} \
 	triple="$(cat /tmp/triple)" \
 	&& AWTRIX_CONTROLLER_VERSION="${VERSION}" \
