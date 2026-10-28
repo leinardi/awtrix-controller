@@ -85,8 +85,16 @@ pub trait Publisher: Send + Sync {
 #[derive(Default)]
 struct Memory {
     overlay: Option<OverlayEffect>,
-    last_notified: Vec<EventCandidate>,
-    last_notified_at: Option<Timestamp>,
+    last_notified: Option<NotifiedForecast>,
+}
+
+/// The notification batch and the age of the forecast it came from. A later successful poll
+/// without new notifications must not refresh this batch's age.
+#[derive(Clone)]
+struct NotifiedForecast {
+    candidates: Vec<EventCandidate>,
+    notified_at: Timestamp,
+    fetched_at: Timestamp,
 }
 
 /// Polls the forecast and publishes overlays and warnings.
@@ -182,25 +190,26 @@ impl Controller {
         );
     }
 
-    /// Sends a newly connected device the warnings of the last poll that notified, unless there
-    /// were none or they are older than `notification_repeat_minutes` (the next poll then decides).
+    /// Sends a newly connected device the warnings of the last poll that notified, unless
+    /// the repeat interval or the forecast's stale-data TTL has elapsed.
     pub async fn on_device_connected(&self, client_id: &str) {
-        let (candidates, sent_at) = {
+        let cached = {
             let memory = self.memory();
-            (memory.last_notified.clone(), memory.last_notified_at)
+            memory.last_notified.clone()
         };
-        let Some(sent_at) = sent_at else {
+        let Some(cached) = cached else {
             return;
         };
-        if candidates.is_empty() {
-            return;
-        }
+        let now = self.clock.now();
         let repeat_interval = minutes(self.config.notification_repeat_minutes);
-        if self.clock.now().duration_since(sent_at) >= repeat_interval {
+        let ttl = minutes(self.config.data_stale_ttl_minutes);
+        if now.duration_since(cached.notified_at) >= repeat_interval
+            || now.duration_since(cached.fetched_at) >= ttl
+        {
             return;
         }
 
-        for candidate in &candidates {
+        for candidate in &cached.candidates {
             let published = self.publish_to(client_id, candidate).await;
             if let Err(error) = published {
                 warn!(
@@ -278,8 +287,11 @@ impl Controller {
             );
         if !to_notify.is_empty() {
             let mut memory = self.memory();
-            memory.last_notified.clone_from(&to_notify);
-            memory.last_notified_at = Some(now);
+            memory.last_notified = Some(NotifiedForecast {
+                candidates: to_notify.clone(),
+                notified_at: now,
+                fetched_at: fetch_start,
+            });
         }
 
         debug!(

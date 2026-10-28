@@ -335,6 +335,20 @@ async fn valid_credentials_connect_and_receive_retained_settings() {
     harness.shutdown().await;
 }
 
+#[test]
+fn broker_config_debug_redacts_the_password() {
+    let config = BrokerConfig {
+        tcp_addr: "127.0.0.1:1883".parse().expect("address"),
+        ws_addr: None,
+        username: USERNAME.to_owned(),
+        password: PASSWORD.to_owned(),
+        publish_delay: None,
+    };
+    let output = format!("{config:?}");
+    assert!(!output.contains(PASSWORD), "password in {output}");
+    assert!(output.contains("[REDACTED]"), "no redaction in {output}");
+}
+
 /// Go: `TestBrokerConnectInvalidCredentials`
 #[tokio::test(flavor = "multi_thread")]
 async fn invalid_credentials_are_rejected() {

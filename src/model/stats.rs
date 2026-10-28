@@ -26,9 +26,8 @@
 
 use std::fmt;
 
-use serde::de::{MapAccess, Visitor};
+use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Map, Value};
 
 /// The device status. The keys are the firmware's snake-case ones.
 ///
@@ -106,7 +105,7 @@ pub struct Stats {
 impl Stats {
     /// Decodes a stats payload the way Go's `encoding/json` did: a key matches its field
     /// case-insensitively, and when several keys match the same field the last one in the
-    /// document wins; a missing key or a `null` value leaves the field at its zero value, an
+    /// document wins; a missing key leaves zero and a `null` leaves the field unchanged, an
     /// unknown key is ignored, a payload that is `null` as a whole decodes to all zero values,
     /// and a value of the wrong type fails the whole payload.
     ///
@@ -115,50 +114,72 @@ impl Stats {
     /// The payload is not JSON, is neither an object nor `null`, or holds a value of the wrong
     /// type for its field.
     pub fn from_json(payload: &[u8]) -> Result<Self, serde_json::Error> {
-        let Some(DocumentOrder(entries)) = serde_json::from_slice(payload)? else {
-            return Ok(Self::default());
-        };
-
-        // Folding in document order, into a map that keeps the last value per key, gives Go's
-        // "last matching key wins".
-        let folded: Map<String, Value> = entries
-            .into_iter()
-            .map(|(key, field_value)| (key.to_lowercase(), field_value))
-            .collect();
-
-        serde_json::from_value(Value::Object(folded))
+        let decoded: Option<DecodedStats> = serde_json::from_slice(payload)?;
+        Ok(decoded.map_or_else(Self::default, |decoded| decoded.0))
     }
 }
 
-/// A JSON object's entries in document order. `serde_json::Map` is sorted by key, which would
-/// lose the order Go's decoder resolves duplicate keys by.
-struct DocumentOrder(Vec<(String, Value)>);
+/// Decodes each occurrence before reading the next, so a later duplicate cannot hide a type
+/// error and a null cannot overwrite an earlier scalar.
+struct DecodedStats(Stats);
 
-impl<'de> Deserialize<'de> for DocumentOrder {
+impl<'de> Deserialize<'de> for DecodedStats {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct EntriesVisitor;
 
         impl<'de> Visitor<'de> for EntriesVisitor {
-            type Value = DocumentOrder;
+            type Value = DecodedStats;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a JSON object")
             }
 
-            fn visit_map<A: MapAccess<'de>>(
-                self,
-                mut access: A,
-            ) -> Result<DocumentOrder, A::Error> {
-                let mut entries = Vec::new();
-                while let Some(entry) = access.next_entry::<String, Value>()? {
-                    entries.push(entry);
+            fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> Result<DecodedStats, A::Error> {
+                let mut stats = Stats::default();
+                while let Some(key) = access.next_key::<String>()? {
+                    match key.to_lowercase().as_str() {
+                        "app" => replace_non_null(&mut access, &mut stats.app)?,
+                        "bat" => replace_non_null(&mut access, &mut stats.bat)?,
+                        "bat_raw" => replace_non_null(&mut access, &mut stats.bat_raw)?,
+                        "bri" => replace_non_null(&mut access, &mut stats.bri)?,
+                        "hum" => replace_non_null(&mut access, &mut stats.hum)?,
+                        "indicator1" => replace_non_null(&mut access, &mut stats.indicator1)?,
+                        "indicator2" => replace_non_null(&mut access, &mut stats.indicator2)?,
+                        "indicator3" => replace_non_null(&mut access, &mut stats.indicator3)?,
+                        "ip_address" => replace_non_null(&mut access, &mut stats.ip_address)?,
+                        "ldr_raw" => replace_non_null(&mut access, &mut stats.ldr_raw)?,
+                        "lux" => replace_non_null(&mut access, &mut stats.lux)?,
+                        "matrix" => replace_non_null(&mut access, &mut stats.matrix)?,
+                        "messages" => replace_non_null(&mut access, &mut stats.messages)?,
+                        "ram" => replace_non_null(&mut access, &mut stats.ram)?,
+                        "temp" => replace_non_null(&mut access, &mut stats.temp)?,
+                        "type" => replace_non_null(&mut access, &mut stats.device_type)?,
+                        "uid" => replace_non_null(&mut access, &mut stats.uid)?,
+                        "uptime" => replace_non_null(&mut access, &mut stats.uptime)?,
+                        "version" => replace_non_null(&mut access, &mut stats.version)?,
+                        "wifi_signal" => replace_non_null(&mut access, &mut stats.wifi_signal)?,
+                        _ => {
+                            access.next_value::<IgnoredAny>()?;
+                        }
+                    }
                 }
-                Ok(DocumentOrder(entries))
+                Ok(DecodedStats(stats))
             }
         }
 
         deserializer.deserialize_map(EntriesVisitor)
     }
+}
+
+fn replace_non_null<'de, A, T>(access: &mut A, field: &mut T) -> Result<(), A::Error>
+where
+    A: MapAccess<'de>,
+    T: Deserialize<'de>,
+{
+    if let Some(value) = access.next_value::<Option<T>>()? {
+        *field = value;
+    }
+    Ok(())
 }
 
 /// Decodes a JSON `null` as the zero value, which is what Go's `encoding/json` does to a field it

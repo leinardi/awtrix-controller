@@ -177,7 +177,9 @@ flight. A `null` in the forecast is a missing value (Q1), skipped by the checks 
 failed fetch clears the overlay and keeps event state; the state manager decides what to notify
 (new, more severe, changed fingerprint, or older than the repeat interval), and
 `on_device_connected` replays the last batch while it is younger than
-`notification_repeat_minutes`. `--weather-wmo` replaces the fetch with a simulation for
+`notification_repeat_minutes` and its source fetch is younger than `data_stale_ttl_minutes`.
+Polls that do not notify must not refresh the cached batch's fetch timestamp.
+`--weather-wmo` replaces the fetch with a simulation for
 debugging.
 
 ### Shutdown is bounded
@@ -288,9 +290,9 @@ and the broker and run test harnesses.
 - A behaviour that differs from 1.x needs its row in the README's migration section.
 
 A surface the code has and the docs do not mention is a finding; so is a documented one
-nothing implements, and a default in the docs that differs from the code. Known gap (verify
-before relying on it): `weather.data_stale_ttl_minutes` is parsed, defaulted and documented,
-and nothing reads it; a diff that touches it either implements it or removes it with the docs.
+nothing implements, and a default in the docs that differs from the code. Check that configured
+weather warning controls have an observable effect, including the stale-data TTL of cached
+notification replays and both visibility thresholds for fog.
 
 ## 6. Verify before you trust (don't hand-wave the gates)
 

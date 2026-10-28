@@ -288,6 +288,14 @@ fn configuration_warnings_reach_the_log() {
 async fn flags_that_end_the_run_at_once() {
     for (args, expected) in [
         (vec!["--version"], ExitCode::SUCCESS),
+        (
+            vec!["--test-notification-text", "-version", "--version"],
+            ExitCode::SUCCESS,
+        ),
+        (
+            vec!["--test-notification-text=-version", "--version"],
+            ExitCode::SUCCESS,
+        ),
         (vec!["-v"], ExitCode::SUCCESS),
         (vec!["--help"], ExitCode::SUCCESS),
         (vec!["--unknown"], ExitCode::from(1)),

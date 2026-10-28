@@ -31,6 +31,7 @@
 
 mod hook;
 
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,7 +66,7 @@ const SESSION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(100);
 
 /// How the broker listens and whom it lets in.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BrokerConfig {
     /// The MQTT-over-TCP address.
     pub tcp_addr: SocketAddr,
@@ -77,6 +78,19 @@ pub struct BrokerConfig {
     pub password: String,
     /// A test-only publish stall; `None` in production.
     pub publish_delay: Option<PublishDelay>,
+}
+
+impl fmt::Debug for BrokerConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BrokerConfig")
+            .field("tcp_addr", &self.tcp_addr)
+            .field("ws_addr", &self.ws_addr)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("publish_delay", &self.publish_delay)
+            .finish()
+    }
 }
 
 /// A broker that failed to start or to publish.
@@ -267,7 +281,7 @@ impl Broker {
     /// 5. shut the broker runtime down, which drops any connection still left;
     /// 6. wait for the broker thread to finish, leaving it behind with a warning if it does not.
     ///
-    /// Returns at most [`SHUTDOWN_GRACE`] after `deadline`.
+    /// Returns at most 100 ms after `deadline`.
     pub async fn shutdown(self, deadline: Instant) {
         let Self {
             handle,

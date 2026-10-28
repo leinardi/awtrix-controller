@@ -341,6 +341,57 @@ async fn device_connecting_after_the_interval_gets_nothing() {
     assert!(harness.published.try_recv().is_err());
 }
 
+#[tokio::test(start_paused = true)]
+async fn stale_forecast_is_not_replayed_at_the_ttl_boundary() {
+    let config = WeatherConfig {
+        data_stale_ttl_minutes: 1,
+        ..config()
+    };
+    let mut harness = harness(config, vec![Response::Points(points(95))], &[], "UTC");
+    next(&mut harness.overlays).await;
+    harness.stop().await;
+
+    tokio::time::advance(Duration::from_secs(59)).await;
+    harness.controller.on_device_connected("fresh").await;
+    assert_eq!(
+        harness.published.try_recv().expect("fresh replay").0,
+        "fresh"
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    harness.controller.on_device_connected("stale").await;
+    assert!(
+        harness.published.try_recv().is_err(),
+        "replayed expired forecast"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn polls_without_notifications_do_not_refresh_cached_warning_ttl() {
+    for response in [Response::Points(points(95)), Response::Fail] {
+        let config = WeatherConfig {
+            data_stale_ttl_minutes: 20,
+            ..config()
+        };
+        let mut harness = harness(
+            config,
+            vec![Response::Points(points(95)), response],
+            &[],
+            "UTC",
+        );
+        next(&mut harness.overlays).await;
+        next(&mut harness.fetches).await;
+        next(&mut harness.fetches).await;
+        harness.stop().await;
+
+        tokio::time::advance(Duration::from_mins(6)).await;
+        harness.controller.on_device_connected("stale").await;
+        assert!(
+            harness.published.try_recv().is_err(),
+            "poll refreshed old batch"
+        );
+    }
+}
+
 /// Go: `TestControllerOnDeviceConnectedNoPendingEvents`
 #[tokio::test(start_paused = true)]
 async fn device_connecting_without_events_gets_nothing() {

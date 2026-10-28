@@ -148,6 +148,16 @@ fn stats_decode_like_encoding_json() {
     assert!(Stats::from_json(b"{not json").is_err());
 }
 
+#[test]
+fn stats_duplicate_fields_preserve_null_and_type_error_semantics() {
+    let stats = Stats::from_json(br#"{"bat":85,"BAT":null,"app":"Time","APP":null}"#)
+        .expect("null does not replace a scalar");
+    assert_eq!(stats.bat, 85);
+    assert_eq!(stats.app, "Time");
+    assert!(Stats::from_json(br#"{"bat":"invalid","BAT":85}"#).is_err());
+    assert!(Stats::from_json(br#"{"APP":false,"app":"Time"}"#).is_err());
+}
+
 /// Go: `TestNotificationRoundTrip`
 #[test]
 fn notification_round_trip() {

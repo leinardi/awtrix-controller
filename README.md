@@ -298,6 +298,16 @@ weather:
 
 An omitted threshold takes its default; any value given, `0` included, is used as is.
 
+Polling intervals, horizons, the notification repeat interval, stale-data TTL and the missing-poll
+count must be positive; `0` still selects the default. Negative values are configuration errors.
+Cached warnings replay to a newly ready device only while both the notification repeat interval
+and `data_stale_ttl_minutes` have not elapsed. The TTL measures the age of the fetch that produced
+the cached batch, not the age of a later poll that did not notify.
+
+When visibility is available, fog alerts use `fog_visibility_severe_m` and
+`fog_visibility_warn_m`, even without a fog weather code. Visibility equal to a threshold does
+not meet that threshold. With missing visibility, WMO 45 or 48 still produces a warning.
+
 ## Migrating from 1.x
 
 Version 2.0 replaces the Go implementation with a Rust one. The configuration file, the MQTT
@@ -315,6 +325,8 @@ topics and the payload fields stay the same; these are the differences.
 | Q8 | Logging | slog text (`time=… level=INFO msg=…`) | tracing text by default; `log_format: json` or `--log-format json` for JSON |
 | Q9 | CLI | Go `flag` | clap; see below |
 | Q10 | Energy-saving window on daylight-saving days | the time since local midnight was added, so `07:00` fired at 08:00 on a spring-forward day and an hour early on a fall-back day | start and end are wall-clock times on every day (see below) |
+| Q11 | Weather interval validation | negative intervals, horizons and missing-poll counts were accepted | rejected as configuration errors; `0` still selects the default |
+| Q12 | Weather warning controls | stale-data TTL and fog warning visibility were parsed but unused | cached notification replays obey the TTL; known visibility uses the configured fog thresholds |
 
 **Q9, the command line.** The flags, their defaults and their environment variables are the same,
 plus `--log-format`. What changed:
