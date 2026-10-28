@@ -40,12 +40,14 @@ use tokio_util::task::TaskTracker;
 use tracing::info;
 
 use crate::clock::Clock;
+use crate::state::Failures;
 
 /// Runs recurring jobs until stopped.
 pub struct Scheduler {
     clock: Arc<dyn Clock>,
     cancel: CancellationToken,
     tasks: TaskTracker,
+    failures: Failures,
 }
 
 impl Scheduler {
@@ -53,11 +55,17 @@ impl Scheduler {
     /// [`cancel`](Self::cancel) does.
     #[must_use]
     pub fn new(clock: Arc<dyn Clock>, parent: &CancellationToken) -> Self {
+        let cancel = parent.child_token();
         Self {
             clock,
-            cancel: parent.child_token(),
+            failures: Failures::new(cancel.clone()),
+            cancel,
             tasks: TaskTracker::new(),
         }
+    }
+
+    pub(crate) fn failures(&self) -> Failures {
+        self.failures.clone()
     }
 
     /// Registers a recurring job: it fires at `fire_at` (at once if that has passed), runs
@@ -71,9 +79,24 @@ impl Scheduler {
         name: &str,
         fire_at: Timestamp,
         mut action: Action,
-        mut reschedule: Reschedule,
+        reschedule: Reschedule,
     ) where
         Action: FnMut() -> ActionFuture + Send + 'static,
+        ActionFuture: Future<Output = ()> + Send + 'static,
+        Reschedule: FnMut(Timestamp) -> Timestamp + Send + 'static,
+    {
+        self.schedule_with_due(name, fire_at, move |_| action(), reschedule);
+    }
+
+    /// Supplies the due instant directly to boundary-driven controllers, without shared timer state.
+    pub(crate) fn schedule_with_due<Action, ActionFuture, Reschedule>(
+        &self,
+        name: &str,
+        fire_at: Timestamp,
+        mut action: Action,
+        mut reschedule: Reschedule,
+    ) where
+        Action: FnMut(Timestamp) -> ActionFuture + Send + 'static,
         ActionFuture: Future<Output = ()> + Send + 'static,
         Reschedule: FnMut(Timestamp) -> Timestamp + Send + 'static,
     {
@@ -93,7 +116,7 @@ impl Scheduler {
                     () = tokio::time::sleep(delay) => {}
                 }
 
-                action().await;
+                action(fire_at).await;
 
                 if cancel.is_cancelled() {
                     return;

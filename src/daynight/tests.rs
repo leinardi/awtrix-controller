@@ -143,8 +143,7 @@ async fn day_to_night_transition() {
 }
 
 /// Go: `TestPolarNightFallbackTC17`. When the sun cannot be computed the mode stays night, a
-/// warning is logged, and the retry is scheduled at the next local midnight. That retry toggles
-/// the mode, as Go's did.
+/// warning is logged, and retries at local midnight never manufacture daylight.
 #[tokio::test(start_paused = true)]
 async fn polar_night_falls_back_to_night_and_retries_at_midnight() {
     let captured = Captured::default();
@@ -160,13 +159,89 @@ async fn polar_night_falls_back_to_night_and_retries_at_midnight() {
     assert!(log.contains("polar night or midnight sun"), "{log}");
     assert!(log.contains(r#""date":"2024-01-15""#), "{log}");
 
-    let (mode, at) = changes.recv().await.expect("retry");
+    for _ in 0..3 {
+        tokio::time::advance(std::time::Duration::from_hours(24)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(controller.current_mode(), Mode::Night);
+        assert!(changes.try_recv().is_err(), "polar retry reported daylight");
+    }
+    scheduler.stop().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn polar_recovery_schedules_the_first_available_sunrise() {
+    let ordinary = normal_sun(TimeZone::UTC);
+    let sun: SunFunction = Arc::new(move |latitude, longitude, day| {
+        (day >= date(2024, 1, 17))
+            .then(|| ordinary(latitude, longitude, day))
+            .flatten()
+    });
+    let now = instant("2024-01-15T14:00:00Z");
+    let (controller, scheduler, mut changes) = started(now, TimeZone::UTC, location(), Some(sun));
+    let (mode, at) = changes.recv().await.expect("first sunrise");
+    assert_eq!((mode, at), (Mode::Day, instant("2024-01-17T06:00:00Z")));
+    assert_eq!(controller.current_mode(), Mode::Day);
     assert_eq!(
-        at,
-        instant("2024-01-16T00:00:00Z"),
-        "the retry is at the next midnight"
+        changes.recv().await.expect("sunset"),
+        (Mode::Night, instant("2024-01-17T20:00:00Z"))
     );
-    assert_eq!(mode, Mode::Day, "Go toggles on every scheduled transition");
+    scheduler.stop().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn lagging_clock_does_not_skip_sun_boundaries() {
+    let frozen = Arc::new(crate::clock::FakeClock::new(instant(
+        "2024-06-15T19:59:00Z",
+    )));
+    let scheduler = Scheduler::new(frozen.clone(), &CancellationToken::new());
+    let (changes, mut received) = mpsc::unbounded_channel();
+    let on_change: OnModeChange = Arc::new(move |mode| {
+        let _ = changes.send(mode);
+        Box::pin(std::future::ready(()))
+    });
+    let controller = DayNight::with_sun_function(
+        location(),
+        TimeZone::UTC,
+        frozen,
+        on_change,
+        normal_sun(TimeZone::UTC),
+    );
+    controller.start(&scheduler);
+    assert_eq!(received.recv().await, Some(Mode::Night));
+    assert_eq!(received.recv().await, Some(Mode::Day));
+    scheduler.stop().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn slow_callback_does_not_skip_an_overdue_sunrise() {
+    let clock = TokioClock::new(instant("2024-06-15T19:59:00Z"));
+    let scheduler = Scheduler::new(Arc::new(clock), &CancellationToken::new());
+    let (changes, mut received) = mpsc::unbounded_channel();
+    let on_change: OnModeChange = Arc::new(move |mode| {
+        let changes = changes.clone();
+        Box::pin(async move {
+            let _ = changes.send((mode, clock.now()));
+            if mode == Mode::Night {
+                tokio::time::sleep(std::time::Duration::from_hours(36)).await;
+            }
+        })
+    });
+    let controller = DayNight::with_sun_function(
+        location(),
+        TimeZone::UTC,
+        Arc::new(clock),
+        on_change,
+        normal_sun(TimeZone::UTC),
+    );
+    controller.start(&scheduler);
+    assert_eq!(
+        received.recv().await,
+        Some((Mode::Night, instant("2024-06-15T20:00:00Z")))
+    );
+    assert_eq!(
+        received.recv().await,
+        Some((Mode::Day, instant("2024-06-17T08:00:00Z")))
+    );
     scheduler.stop().await;
 }
 

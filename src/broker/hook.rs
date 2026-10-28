@@ -28,7 +28,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -38,6 +38,7 @@ use tracing::{debug, info, warn};
 
 use crate::clientstate::Registry;
 use crate::model::Stats;
+use crate::state::{self, StateError};
 
 /// Called with a client ID. Called on the broker's runtime from inside a hook, so it must return
 /// quickly and hand any real work to the controller (a channel, a spawn on its own runtime).
@@ -51,6 +52,8 @@ pub struct Callbacks {
     /// A device published its first stats on this connection: it has subscribed and is ready for
     /// notifications.
     pub on_device_ready: ClientCallback,
+    /// Critical state became unusable: the controller must shut down.
+    pub on_state_error: Arc<dyn Fn(StateError) + Send + Sync>,
 }
 
 /// A test-only stall: every publish by `client_id` waits `delay` in the hook. `None` in
@@ -139,24 +142,25 @@ impl ControllerHook {
         }
     }
 
-    fn connected(&self, id: &Id) {
+    fn connected(&self, id: &Id) -> Result<(), StateError> {
         let client_id = id.client_id.to_string();
-        self.lock().insert(
+        self.lock()?.insert(
             client_id.clone(),
             Connection {
                 session: SessionKey::of(id),
                 ready: false,
             },
         );
-        self.registry.register(&client_id);
+        self.registry.register(&client_id)?;
         info!(client_id, "broker: client connected");
         (self.callbacks.on_connected)(&client_id);
+        Ok(())
     }
 
-    fn disconnected(&self, id: &Id, reason: &str) {
+    fn disconnected(&self, id: &Id, reason: &str) -> Result<(), StateError> {
         let client_id = id.client_id.to_string();
         let current = {
-            let mut connections = self.lock();
+            let mut connections = self.lock()?;
             let current = connections
                 .get(&client_id)
                 .is_some_and(|connection| connection.session == SessionKey::of(id));
@@ -166,7 +170,7 @@ impl ControllerHook {
             current
         };
         if current {
-            self.registry.unregister(&client_id);
+            self.registry.unregister(&client_id)?;
         }
         info!(
             client_id,
@@ -174,11 +178,12 @@ impl ControllerHook {
             stale = !current,
             "broker: client disconnected"
         );
+        Ok(())
     }
 
     /// Routes a device's publish by topic suffix: stats (the first on a connection also reports
     /// the device ready), the current app, and button presses.
-    fn published(&self, id: &Id, topic: &str, payload: &[u8]) {
+    fn published(&self, id: &Id, topic: &str, payload: &[u8]) -> Result<(), StateError> {
         let client_id = &*id.client_id;
         debug!(
             client_id,
@@ -189,7 +194,7 @@ impl ControllerHook {
 
         if topic.ends_with("/stats") {
             match Stats::from_json(payload) {
-                Ok(stats) => self.registry.update_stats(client_id, stats),
+                Ok(stats) => self.registry.update_stats(client_id, stats)?,
                 Err(error) => warn!(
                     client_id,
                     topic,
@@ -197,12 +202,12 @@ impl ControllerHook {
                     "broker: failed to parse stats payload"
                 ),
             }
-            if self.mark_ready(id) {
+            if self.mark_ready(id)? {
                 (self.callbacks.on_device_ready)(client_id);
             }
         } else if topic.ends_with("/stat/currentApp") {
             let app = String::from_utf8_lossy(payload);
-            self.registry.update_current_app(client_id, &app);
+            self.registry.update_current_app(client_id, &app)?;
             debug!(client_id, app = %app, "broker: current app updated");
         } else if let Some(button) = ["left", "select", "right"]
             .into_iter()
@@ -217,24 +222,28 @@ impl ControllerHook {
                 "broker: unhandled topic"
             );
         }
+        Ok(())
     }
 
     /// Marks the current session of the publisher ready, and reports whether it just became so.
-    fn mark_ready(&self, id: &Id) -> bool {
-        let mut connections = self.lock();
-        match connections.get_mut(&*id.client_id) {
+    fn mark_ready(&self, id: &Id) -> Result<bool, StateError> {
+        let mut connections = self.lock()?;
+        Ok(match connections.get_mut(&*id.client_id) {
             Some(connection) if connection.session == SessionKey::of(id) && !connection.ready => {
                 connection.ready = true;
                 true
             }
             Some(_) | None => false,
-        }
+        })
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Connection>> {
-        self.connections
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, Connection>>, StateError> {
+        state::checked(self.connections.lock(), "broker connections")
+    }
+
+    fn state_failed(&self, error: StateError) {
+        self.closing.store(true, Ordering::SeqCst);
+        (self.callbacks.on_state_error)(error);
     }
 }
 
@@ -259,17 +268,22 @@ impl Handler for SharedHook {
         }
 
         // rmqtt's parameter enum has a variant per hook type; only the registered ones arrive.
-        if let Parameter::ClientConnected(session) = parameter {
-            hook.connected(&session.id);
+        let handled = if let Parameter::ClientConnected(session) = parameter {
+            hook.connected(&session.id)
         } else if let Parameter::ClientDisconnected(session, reason) = parameter {
-            hook.disconnected(&session.id, &reason.to_string());
+            hook.disconnected(&session.id, &reason.to_string())
         } else if let Parameter::MessagePublish(Some(session), _from, publish) = parameter {
             if let Some(stall) = &hook.publish_delay
                 && *session.id.client_id == *stall.client_id
             {
                 tokio::time::sleep(stall.delay).await;
             }
-            hook.published(&session.id, &publish.topic, &publish.payload);
+            hook.published(&session.id, &publish.topic, &publish.payload)
+        } else {
+            Ok(())
+        };
+        if let Err(error) = handled {
+            hook.state_failed(error);
         }
         (true, accumulated)
     }
@@ -288,6 +302,7 @@ mod tests {
             Callbacks {
                 on_connected: Arc::clone(&noop),
                 on_device_ready: noop,
+                on_state_error: Arc::new(|_| {}),
             },
             Arc::new(AtomicBool::new(false)),
             None,
@@ -328,5 +343,34 @@ mod tests {
         hook.closing.store(true, Ordering::SeqCst);
         let result = hook.authenticate(Some("user"), Some(b"pass"));
         assert!(matches!(result, AuthResult::NotAuthorized), "{result:?}");
+    }
+
+    #[test]
+    fn poisoned_connections_report_failure_and_refuse_authentication() {
+        let (reported, mut errors) = tokio::sync::mpsc::unbounded_channel();
+        let mut hook = hook();
+        hook.callbacks.on_state_error = Arc::new(move |error| {
+            let _ = reported.send(error);
+        });
+        let hook = Arc::new(hook);
+        let writer = Arc::clone(&hook);
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = writer.connections.lock().expect("healthy lock");
+                panic!("simulate interrupted connection update");
+            })
+            .join()
+            .is_err()
+        );
+        let error = hook.lock().expect_err("poisoned lock");
+        hook.state_failed(error);
+        assert_eq!(
+            errors.try_recv().expect("reported failure"),
+            StateError::Poisoned("broker connections")
+        );
+        assert!(matches!(
+            hook.authenticate(Some("user"), Some(b"pass")),
+            AuthResult::NotAuthorized
+        ));
     }
 }

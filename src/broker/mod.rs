@@ -124,6 +124,15 @@ fn setup_error(step: &'static str) -> impl FnOnce(rmqtt::Error) -> BrokerError {
     }
 }
 
+/// Whether a server publish is replayed to future subscribers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Retention {
+    /// Store the latest payload for future subscribers.
+    Retained,
+    /// Deliver only to current subscribers.
+    Transient,
+}
+
 /// A cheap handle for publishing through the broker from the controller's runtime.
 #[derive(Clone)]
 pub struct BrokerHandle {
@@ -141,7 +150,7 @@ impl BrokerHandle {
         &self,
         topic: &str,
         payload: Vec<u8>,
-        retain: bool,
+        retention: Retention,
     ) -> Result<(), BrokerError> {
         let context = self.context.clone();
         let owned_topic = topic.to_owned();
@@ -150,7 +159,7 @@ impl BrokerHandle {
             .spawn(async move {
                 let publish = CodecPublish {
                     dup: false,
-                    retain,
+                    retain: retention == Retention::Retained,
                     qos: QoS::AtLeastOnce,
                     topic: owned_topic.into(),
                     packet_id: None,

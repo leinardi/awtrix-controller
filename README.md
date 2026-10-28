@@ -119,8 +119,10 @@ take two dashes, with the value after a space or an `=` (`--config config.yaml`,
 decimal only. A repeated flag keeps its last value. Positional arguments are an error.
 
 The exit code is `0` after a clean shutdown (`SIGINT` or `SIGTERM`), `--version` or `--help`; `1`
-for invalid flags or configuration; and `2` when the broker cannot start (a port in use, for
-example). On a signal the controller stops within 2 seconds, even with a weather fetch in flight.
+for invalid flags or configuration; and `2` when a component cannot start (a port in use, for
+example) or a poisoned state lock forces shutdown. Fatal state errors stop scheduling and use the
+same bounded shutdown path as signals. On a signal the controller stops within 2 seconds, even
+with a weather fetch in flight.
 
 #### Test notification flags (debug only)
 
@@ -222,6 +224,9 @@ energy_saving:
 ### Theme
 
 Colors pushed to every connected device on day/night transitions (`#RRGGBB`).
+When sunrise or sunset is unavailable (polar night or midnight sun), Night remains active and
+the controller retries at each local midnight. Once sun events return, that day's sunrise is
+scheduled normally.
 
 ```yaml
 theme:
@@ -327,6 +332,8 @@ topics and the payload fields stay the same; these are the differences.
 | Q10 | Energy-saving window on daylight-saving days | the time since local midnight was added, so `07:00` fired at 08:00 on a spring-forward day and an hour early on a fall-back day | start and end are wall-clock times on every day (see below) |
 | Q11 | Weather interval validation | negative intervals, horizons and missing-poll counts were accepted | rejected as configuration errors; `0` still selects the default |
 | Q12 | Weather warning controls | stale-data TTL and fog warning visibility were parsed but unused | cached notification replays obey the TTL; known visibility uses the configured fog thresholds |
+| Q13 | Polar fallback | midnight retries toggled day/night despite unavailable sun events | remains Night until sun events return, then resumes that day's schedule |
+| Q14 | Poisoned shared state | not applicable to Go's locks | Rust state-lock failures return typed errors and trigger bounded shutdown with exit code `2`; inconsistent state is never reused |
 
 **Q9, the command line.** The flags, their defaults and their environment variables are the same,
 plus `--log-format`. What changed:

@@ -39,6 +39,51 @@ fn base_time() -> Timestamp {
     instant("2025-01-01T12:00:00Z")
 }
 
+#[tokio::test(start_paused = true)]
+async fn poisoned_weather_state_stops_polling_without_notifying() {
+    for cache in [false, true] {
+        let mut harness = harness(
+            config(),
+            vec![Response::Points(points(95))],
+            &["device1"],
+            "UTC",
+        );
+        let writer = Arc::clone(&harness.controller);
+        assert!(
+            std::thread::spawn(move || {
+                if cache {
+                    let _guard = writer.memory.lock().expect("healthy cache");
+                    panic!("simulate interrupted cache update");
+                } else {
+                    let _guard = writer.states.lock().expect("healthy event state");
+                    panic!("simulate interrupted event update");
+                }
+            })
+            .join()
+            .is_err()
+        );
+        let failures = harness.scheduler.failures();
+        let error = tokio::time::timeout(Duration::from_secs(1), failures.failed())
+            .await
+            .expect("failure reported");
+        assert_eq!(
+            error,
+            StateError::Poisoned(if cache {
+                "weather notification cache"
+            } else {
+                "weather event state"
+            })
+        );
+        harness.stop().await;
+        assert!(harness.published.try_recv().is_err());
+        assert!(harness.fetches.try_recv().is_ok(), "first fetch ran");
+        assert!(harness.fetches.try_recv().is_err(), "polling continued");
+        if cache {
+            assert!(harness.controller.on_device_connected("new").await.is_err());
+        }
+    }
+}
+
 /// The Go tests' configuration.
 fn config() -> WeatherConfig {
     WeatherConfig {
@@ -320,7 +365,11 @@ async fn device_connecting_within_the_interval_gets_the_warnings() {
         "nothing was connected"
     );
 
-    harness.controller.on_device_connected("device1").await;
+    harness
+        .controller
+        .on_device_connected("device1")
+        .await
+        .expect("healthy cache");
     let (client_id, notification) = next(&mut harness.published).await;
     assert_eq!(client_id, "device1");
     assert_eq!(
@@ -337,7 +386,11 @@ async fn device_connecting_after_the_interval_gets_nothing() {
     harness.stop().await;
 
     tokio::time::advance(Duration::from_mins(61)).await;
-    harness.controller.on_device_connected("device1").await;
+    harness
+        .controller
+        .on_device_connected("device1")
+        .await
+        .expect("healthy cache");
     assert!(harness.published.try_recv().is_err());
 }
 
@@ -352,13 +405,21 @@ async fn stale_forecast_is_not_replayed_at_the_ttl_boundary() {
     harness.stop().await;
 
     tokio::time::advance(Duration::from_secs(59)).await;
-    harness.controller.on_device_connected("fresh").await;
+    harness
+        .controller
+        .on_device_connected("fresh")
+        .await
+        .expect("healthy cache");
     assert_eq!(
         harness.published.try_recv().expect("fresh replay").0,
         "fresh"
     );
     tokio::time::advance(Duration::from_secs(1)).await;
-    harness.controller.on_device_connected("stale").await;
+    harness
+        .controller
+        .on_device_connected("stale")
+        .await
+        .expect("healthy cache");
     assert!(
         harness.published.try_recv().is_err(),
         "replayed expired forecast"
@@ -384,7 +445,11 @@ async fn polls_without_notifications_do_not_refresh_cached_warning_ttl() {
         harness.stop().await;
 
         tokio::time::advance(Duration::from_mins(6)).await;
-        harness.controller.on_device_connected("stale").await;
+        harness
+            .controller
+            .on_device_connected("stale")
+            .await
+            .expect("healthy cache");
         assert!(
             harness.published.try_recv().is_err(),
             "poll refreshed old batch"
@@ -401,7 +466,11 @@ async fn device_connecting_without_events_gets_nothing() {
     next(&mut harness.fetches).await;
     harness.stop().await;
 
-    harness.controller.on_device_connected("device1").await;
+    harness
+        .controller
+        .on_device_connected("device1")
+        .await
+        .expect("healthy cache");
     assert!(harness.published.try_recv().is_err());
 }
 

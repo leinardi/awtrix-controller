@@ -35,7 +35,9 @@ use std::net::{SocketAddr, TcpListener};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use awtrix_controller::broker::{Broker, BrokerConfig, BrokerHandle, Callbacks, PublishDelay};
+use awtrix_controller::broker::{
+    Broker, BrokerConfig, BrokerHandle, Callbacks, PublishDelay, Retention,
+};
 use awtrix_controller::clientstate::Registry;
 use awtrix_controller::model::Settings;
 use awtrix_controller::settings;
@@ -145,6 +147,7 @@ async fn try_start(publish_delay: Option<PublishDelay>) -> Option<Harness> {
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(client_id.to_owned());
         }),
+        on_state_error: Arc::new(|error| panic!("unexpected state error: {error}")),
     };
     let config = BrokerConfig {
         tcp_addr: tcp,
@@ -315,7 +318,13 @@ async fn valid_credentials_connect_and_receive_retained_settings() {
         .await
         .expect("pushed in time");
     assert_eq!(pushed.as_deref(), Some("device01"));
-    assert!(harness.registry.snapshot("device01").is_some());
+    assert!(
+        harness
+            .registry
+            .snapshot("device01")
+            .expect("registry")
+            .is_some()
+    );
 
     // Retained: subscribing after the push still delivers them.
     device
@@ -359,7 +368,13 @@ async fn invalid_credentials_are_rejected() {
         "{:?}",
         refused.err()
     );
-    assert!(harness.registry.connected_ids().is_empty());
+    assert!(
+        harness
+            .registry
+            .connected_ids()
+            .expect("registry")
+            .is_empty()
+    );
     assert_eq!(harness.connected_count(), 0);
     harness.shutdown().await;
 }
@@ -377,6 +392,7 @@ async fn stats_are_stored_before_the_puback() {
     let stats = harness
         .registry
         .snapshot("device02")
+        .expect("registry")
         .and_then(|state| state.stats)
         .expect("stats stored");
     assert_eq!((stats.bat, stats.lux, stats.ram), (85, 450, 28000));
@@ -384,7 +400,11 @@ async fn stats_are_stored_before_the_puback() {
     device
         .publish_acked("device02/stat/currentApp", b"Time")
         .await;
-    let device_state = harness.registry.snapshot("device02").expect("registered");
+    let device_state = harness
+        .registry
+        .snapshot("device02")
+        .expect("registry")
+        .expect("registered");
     assert_eq!(device_state.current_app, "Time");
     harness.shutdown().await;
 }
@@ -396,10 +416,13 @@ async fn disconnect_unregisters() {
     let device = connect(harness.tcp, "device03", PASSWORD, false)
         .await
         .expect("connected");
-    assert_eq!(harness.registry.connected_ids(), ["device03"]);
+    assert_eq!(
+        harness.registry.connected_ids().expect("registry"),
+        ["device03"]
+    );
     device.client.disconnect().await.expect("disconnect");
     let registry = Arc::clone(&harness.registry);
-    assert!(eventually(|| registry.connected_ids().is_empty()).await);
+    assert!(eventually(|| registry.connected_ids().expect("registry").is_empty()).await);
     harness.shutdown().await;
 }
 
@@ -436,7 +459,7 @@ async fn device_ready_fires_once_per_connection() {
 
     device.client.disconnect().await.expect("disconnect");
     let registry = Arc::clone(&harness.registry);
-    assert!(eventually(|| registry.connected_ids().is_empty()).await);
+    assert!(eventually(|| registry.connected_ids().expect("registry").is_empty()).await);
     let mut again = connect(harness.tcp, "device05", PASSWORD, false)
         .await
         .expect("reconnected");
@@ -459,17 +482,18 @@ async fn reconnect_after_clean_disconnect_keeps_the_registration() {
         .await;
     first.client.disconnect().await.expect("disconnect");
     let registry = Arc::clone(&harness.registry);
-    assert!(eventually(|| registry.connected_ids().is_empty()).await);
+    assert!(eventually(|| registry.connected_ids().expect("registry").is_empty()).await);
 
     let mut second = connect(harness.tcp, "device06", PASSWORD, false)
         .await
         .expect("reconnected");
-    assert!(registry.snapshot("device06").is_some());
+    assert!(registry.snapshot("device06").expect("registry").is_some());
     second
         .publish_acked("device06/stats", br#"{"bat":70}"#)
         .await;
     let stats = registry
         .snapshot("device06")
+        .expect("registry")
         .and_then(|state| state.stats)
         .expect("stats after reconnect");
     assert_eq!(stats.bat, 70);
@@ -494,6 +518,7 @@ async fn takeover_does_not_unregister_the_new_session() {
     let stats = harness
         .registry
         .snapshot("device07")
+        .expect("registry")
         .and_then(|state| state.stats)
         .expect("takeover kept the new session");
     assert_eq!(stats.bat, 80);
@@ -514,6 +539,7 @@ async fn websocket_listener_accepts_devices() {
     let stats = harness
         .registry
         .snapshot("device08")
+        .expect("registry")
         .and_then(|state| state.stats)
         .expect("stats");
     assert_eq!(stats.bat, 90);
@@ -537,7 +563,11 @@ async fn server_publish_reaches_a_subscriber() {
         .await;
     harness
         .handle
-        .publish("device09/notify", br#"{"text":"hi"}"#.to_vec(), false)
+        .publish(
+            "device09/notify",
+            br#"{"text":"hi"}"#.to_vec(),
+            Retention::Transient,
+        )
         .await
         .expect("published");
     let event = device
@@ -745,7 +775,13 @@ async fn bad_credentials_are_refused_on_every_listener() {
             );
         }
     }
-    assert!(harness.registry.connected_ids().is_empty());
+    assert!(
+        harness
+            .registry
+            .connected_ids()
+            .expect("registry")
+            .is_empty()
+    );
     assert_eq!(harness.connected_count(), 0);
 
     // The same packets with the right credentials are accepted, so the refusals above are real.
@@ -788,7 +824,13 @@ async fn correct_credentials_are_refused_while_closing() {
             "WS {version:?}"
         );
     }
-    assert!(harness.registry.connected_ids().is_empty());
+    assert!(
+        harness
+            .registry
+            .connected_ids()
+            .expect("registry")
+            .is_empty()
+    );
     assert_eq!(harness.connected_count(), 0);
     broker
         .shutdown(Instant::now() + Duration::from_secs(2))
@@ -826,6 +868,7 @@ async fn shutdown_closes_every_connection_and_frees_the_ports() {
     let stats = harness
         .registry
         .snapshot("tcp-device")
+        .expect("registry")
         .and_then(|state| state.stats);
 
     let broker = harness.take_broker();
@@ -837,7 +880,7 @@ async fn shutdown_closes_every_connection_and_frees_the_ports() {
     ws_device.wait_for_close().await;
     let published = harness
         .handle
-        .publish("tcp-device/notify", b"{}".to_vec(), false)
+        .publish("tcp-device/notify", b"{}".to_vec(), Retention::Transient)
         .await;
     assert!(published.is_err(), "published after shutdown");
 
@@ -851,6 +894,7 @@ async fn shutdown_closes_every_connection_and_frees_the_ports() {
         harness
             .registry
             .snapshot("tcp-device")
+            .expect("registry")
             .and_then(|state| state.stats),
         stats
     );

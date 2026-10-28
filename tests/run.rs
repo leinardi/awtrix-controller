@@ -356,7 +356,10 @@ fn shutdown_within_the_budget_while_a_fetch_hangs() {
             Ok(Vec::new())
         })
     });
-    let options = Options { fetch: Some(fetch) };
+    let options = Options {
+        fetch: Some(fetch),
+        ..Options::default()
+    };
 
     let (exit, cancelled_at) = runtime.block_on(drive(&[], true, &options, |port, shutdown| {
         let fetch_started = Arc::clone(&fetch_started);

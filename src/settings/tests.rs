@@ -68,7 +68,7 @@ fn builder(mode: Mode, energy_saving: bool) -> Builder {
 
 /// The payload as JSON, as the device receives it.
 fn payload(builder: &Builder) -> Value {
-    serde_json::to_value(builder.build()).expect("JSON")
+    serde_json::to_value(builder.build().expect("healthy overlay")).expect("JSON")
 }
 
 /// Go: `TestBuildDayEnergyInactive`
@@ -114,7 +114,9 @@ fn night_energy_active() {
 #[test]
 fn overlay_present() {
     let builder = builder(Mode::Day, false);
-    builder.set_overlay(Some(OverlayEffect::Snow));
+    builder
+        .set_overlay(Some(OverlayEffect::Snow))
+        .expect("healthy overlay");
     assert_eq!(payload(&builder)["OVERLAY"], "snow");
 }
 
@@ -129,8 +131,10 @@ fn overlay_null_by_default() {
 #[test]
 fn overlay_cleared_after_reset() {
     let builder = builder(Mode::Day, false);
-    builder.set_overlay(Some(OverlayEffect::Snow));
-    builder.set_overlay(None);
+    builder
+        .set_overlay(Some(OverlayEffect::Snow))
+        .expect("healthy overlay");
+    builder.set_overlay(None).expect("healthy overlay");
     assert_eq!(payload(&builder).get("OVERLAY"), Some(&Value::Null));
 }
 
@@ -141,12 +145,14 @@ fn overlay_concurrent_access() {
     let writer = Arc::clone(&builder);
     let handle = thread::spawn(move || {
         for _ in 0..50 {
-            writer.set_overlay(Some(OverlayEffect::Snow));
-            writer.set_overlay(None);
+            writer
+                .set_overlay(Some(OverlayEffect::Snow))
+                .expect("healthy overlay");
+            writer.set_overlay(None).expect("healthy overlay");
         }
     });
     for _ in 0..50 {
-        let _ = builder.build();
+        let _ = builder.build().expect("healthy overlay");
     }
     handle.join().expect("writer");
 }
@@ -172,4 +178,21 @@ fn whole_payload() {
 #[test]
 fn settings_topic() {
     assert_eq!(topic("awtrix_abc"), "awtrix_abc/settings");
+}
+
+#[test]
+fn poisoned_overlay_cannot_be_published_or_replaced() {
+    let builder = Arc::new(builder(Mode::Day, false));
+    let writer = Arc::clone(&builder);
+    assert!(
+        thread::spawn(move || {
+            let _guard = writer.overlay.write().expect("healthy lock");
+            panic!("simulate interrupted overlay update");
+        })
+        .join()
+        .is_err()
+    );
+    let error = StateError::Poisoned("settings overlay");
+    assert_eq!(builder.build(), Err(error));
+    assert_eq!(builder.set_overlay(None), Err(error));
 }

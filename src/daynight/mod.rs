@@ -65,13 +65,6 @@ impl Mode {
         }
     }
 
-    const fn opposite(self) -> Self {
-        match self {
-            Self::Day => Self::Night,
-            Self::Night => Self::Day,
-        }
-    }
-
     const fn from_u8(value: u8) -> Self {
         if value == Self::Day as u8 {
             Self::Day
@@ -139,7 +132,7 @@ impl DayNight {
 
     /// Sets the mode from the current time and schedules the next sunrise or sunset. When the sun
     /// cannot be computed for today (polar night, midnight sun) the mode is night and a retry is
-    /// scheduled at the next local midnight, as Go did.
+    /// scheduled at the next local midnight. Retries keep night until sun events are available.
     pub fn start(self: &Arc<Self>, scheduler: &Scheduler) {
         let now = self.clock.now();
         let today = self.local_date(now);
@@ -165,10 +158,10 @@ impl DayNight {
 
         let on_transition = Arc::downgrade(self);
         let on_reschedule = Arc::downgrade(self);
-        scheduler.schedule(
+        scheduler.schedule_with_due(
             "daynight",
             fire_at,
-            move || transition(&on_transition),
+            move |due| transition(&on_transition, due),
             move |fired| {
                 on_reschedule
                     .upgrade()
@@ -177,25 +170,28 @@ impl DayNight {
         );
     }
 
-    /// Toggles the mode, as Go did on every scheduled transition (including the polar retry at
-    /// midnight), and reports the new mode.
-    fn toggle(&self) -> Mode {
-        let previous = self
-            .mode
-            .fetch_xor(Mode::Day as u8 ^ Mode::Night as u8, Ordering::SeqCst);
-        Mode::from_u8(previous).opposite()
+    /// Derives the state at the due instant or current time, whichever is later. A polar retry
+    /// cannot manufacture daylight, and a lagging wall clock cannot skip a real transition.
+    fn update(&self, due: Timestamp) -> Option<Mode> {
+        let now = self.clock.now().max(due);
+        let mode = match self.sun_on(self.local_date(now)) {
+            Some((rise, set)) if rise <= now && now < set => Mode::Day,
+            Some(_) | None => Mode::Night,
+        };
+        let previous = self.mode.swap(mode as u8, Ordering::SeqCst);
+        (Mode::from_u8(previous) != mode).then_some(mode)
     }
 
     fn set_mode(&self, mode: Mode) {
         self.mode.store(mode as u8, Ordering::SeqCst);
     }
 
-    /// The next opposite event after a transition: today's sunset after a sunrise, tomorrow's
-    /// sunrise after a sunset, or the next local midnight when the sun cannot be computed.
+    /// The next sun event after the due instant. Catching up re-evaluates the mode even if an
+    /// earlier callback ran past another boundary. A polar retry can resume at today's sunrise.
     fn reschedule(&self, fired: Timestamp) -> Timestamp {
         let fired_date = self.local_date(fired);
 
-        let Some((_, set)) = self.sun_on(fired_date) else {
+        let Some((rise, set)) = self.sun_on(fired_date) else {
             warn!(
                 date = %fired_date,
                 latitude = self.latitude,
@@ -205,23 +201,7 @@ impl DayNight {
             return self.next_midnight(fired);
         };
 
-        match self.current_mode() {
-            Mode::Day => set,
-            Mode::Night => {
-                let tomorrow = fired_date.tomorrow().unwrap_or(fired_date);
-                if let Some((tomorrow_rise, _)) = self.sun_on(tomorrow) {
-                    tomorrow_rise
-                } else {
-                    warn!(
-                        date = %tomorrow,
-                        latitude = self.latitude,
-                        longitude = self.longitude,
-                        "daynight: polar night or midnight sun for next day in reschedule; retrying at next midnight"
-                    );
-                    self.next_midnight(fired)
-                }
-            }
-        }
+        self.next_event_after(fired, rise, set)
     }
 
     /// Whichever of today's sunrise and sunset comes next, or tomorrow's sunrise when both have
@@ -263,14 +243,19 @@ impl ModeProvider for DayNight {
     }
 }
 
-/// The scheduled action: toggle the mode and report it. A controller that has been dropped does
+/// The scheduled action: re-evaluate the mode and report a change. A dropped controller does
 /// nothing.
-fn transition(controller: &Weak<DayNight>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+fn transition(
+    controller: &Weak<DayNight>,
+    due: Timestamp,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let Some(controller) = controller.upgrade() else {
         return Box::pin(std::future::ready(()));
     };
-    let mode = controller.toggle();
-    (controller.on_change)(mode)
+    match controller.update(due) {
+        Some(mode) => (controller.on_change)(mode),
+        None => Box::pin(std::future::ready(())),
+    }
 }
 
 /// Sunrise and sunset from the `sunrise` crate, which matches the Go implementation's go-solar
