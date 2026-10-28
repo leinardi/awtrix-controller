@@ -309,9 +309,9 @@ Cached warnings replay to a newly ready device only while both the notification 
 and `data_stale_ttl_minutes` have not elapsed. The TTL measures the age of the fetch that produced
 the cached batch, not the age of a later poll that did not notify.
 
-When visibility is available, fog alerts use `fog_visibility_severe_m` and
-`fog_visibility_warn_m`, even without a fog weather code. Visibility equal to a threshold does
-not meet that threshold. With missing visibility, WMO 45 or 48 still produces a warning.
+For WMO 45 or 48, fog alerts use `fog_visibility_severe_m` and `fog_visibility_warn_m` when
+visibility is known, and a warning when it is missing. Other codes never raise a fog alert.
+Visibility equal to a threshold does not meet it.
 
 ## Migrating from 1.x
 
@@ -331,7 +331,7 @@ topics and the payload fields stay the same; these are the differences.
 | Q9 | CLI | Go `flag` | clap; see below |
 | Q10 | Energy-saving window on daylight-saving days | the time since local midnight was added, so `07:00` fired at 08:00 on a spring-forward day and an hour early on a fall-back day | start and end are wall-clock times on every day (see below) |
 | Q11 | Weather interval validation | negative intervals, horizons and missing-poll counts were accepted | rejected as configuration errors; `0` still selects the default |
-| Q12 | Weather warning controls | stale-data TTL and fog warning visibility were parsed but unused | cached notification replays obey the TTL; known visibility uses the configured fog thresholds |
+| Q12 | Weather warning controls | stale-data TTL and fog warning visibility were parsed but unused | cached notification replays obey the TTL; WMO fog codes 45/48 use the configured visibility thresholds, or warn when visibility is missing; other codes never raise fog alerts |
 | Q13 | Polar fallback | midnight retries toggled day/night despite unavailable sun events | remains Night until sun events return, then resumes that day's schedule |
 | Q14 | Poisoned shared state | not applicable to Go's locks | Rust state-lock failures return typed errors and trigger bounded shutdown with exit code `2`; inconsistent state is never reused |
 

@@ -306,19 +306,19 @@ fn snow(point: &ForecastPoint) -> Option<Severity> {
     }
 }
 
-/// Known visibility uses the numeric thresholds, even without a fog code. When visibility is
-/// missing, a fog code alone still warrants a warning.
+/// Fog codes use the visibility thresholds; missing visibility still warrants a warning.
+/// Poor visibility under other weather codes is not evidence of fog.
 fn fog(point: &ForecastPoint, config: &WeatherConfig) -> Option<Severity> {
+    if !matches!(point.weather_code, Some(wmo::FOG_LIGHT | wmo::FOG_RIME)) {
+        return None;
+    }
     if let Some(visibility) = point.visibility {
         if visibility < config.fog_visibility_severe_m {
             return Some(Severity::Severe);
         }
         return (visibility < config.fog_visibility_warn_m).then_some(Severity::Warning);
     }
-    point
-        .weather_code
-        .filter(|code| matches!(*code, wmo::FOG_LIGHT | wmo::FOG_RIME))
-        .map(|_| Severity::Warning)
+    Some(Severity::Warning)
 }
 
 const fn is_notify_enabled(event_type: EventType, config: &WeatherConfig) -> bool {

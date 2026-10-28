@@ -33,72 +33,52 @@ use serde::{Deserialize, Deserializer, Serialize};
 ///
 /// This is the one payload the controller decodes. Decode it with [`Stats::from_json`], which
 /// reads it the way Go's `encoding/json` did.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "the firmware's payload carries four independent flags; the struct mirrors it"
 )]
 pub struct Stats {
     /// The app currently shown.
-    #[serde(deserialize_with = "null_as_zero")]
     pub app: String,
     /// The battery level in percent.
-    #[serde(deserialize_with = "null_as_zero")]
     pub bat: i64,
     /// The raw battery reading.
-    #[serde(deserialize_with = "null_as_zero")]
     pub bat_raw: i64,
     /// The matrix brightness.
-    #[serde(deserialize_with = "null_as_zero")]
     pub bri: i64,
     /// The relative humidity in percent.
-    #[serde(deserialize_with = "null_as_zero")]
     pub hum: i64,
     /// Whether indicator 1 is on.
-    #[serde(deserialize_with = "null_as_zero")]
     pub indicator1: bool,
     /// Whether indicator 2 is on.
-    #[serde(deserialize_with = "null_as_zero")]
     pub indicator2: bool,
     /// Whether indicator 3 is on.
-    #[serde(deserialize_with = "null_as_zero")]
     pub indicator3: bool,
     /// The device's IP address.
-    #[serde(deserialize_with = "null_as_zero")]
     pub ip_address: String,
     /// The raw light-sensor reading.
-    #[serde(deserialize_with = "null_as_zero")]
     pub ldr_raw: i64,
     /// The ambient light in lux.
-    #[serde(deserialize_with = "null_as_zero")]
     pub lux: i64,
     /// Whether the matrix is on.
-    #[serde(deserialize_with = "null_as_zero")]
     pub matrix: bool,
     /// The number of queued messages.
-    #[serde(deserialize_with = "null_as_zero")]
     pub messages: i64,
     /// The free RAM in bytes.
-    #[serde(deserialize_with = "null_as_zero")]
     pub ram: i64,
     /// The temperature.
-    #[serde(deserialize_with = "null_as_zero")]
     pub temp: i64,
     /// The hardware type.
-    #[serde(rename = "type", deserialize_with = "null_as_zero")]
+    #[serde(rename = "type")]
     pub device_type: i64,
     /// The device's unique ID.
-    #[serde(deserialize_with = "null_as_zero")]
     pub uid: String,
     /// The uptime in seconds.
-    #[serde(deserialize_with = "null_as_zero")]
     pub uptime: i64,
     /// The firmware version.
-    #[serde(deserialize_with = "null_as_zero")]
     pub version: String,
     /// The Wi-Fi signal strength in dBm.
-    #[serde(deserialize_with = "null_as_zero")]
     pub wifi_signal: i64,
 }
 
@@ -180,14 +160,4 @@ where
         *field = value;
     }
     Ok(())
-}
-
-/// Decodes a JSON `null` as the zero value, which is what Go's `encoding/json` does to a field it
-/// cannot set to nil; serde would refuse it.
-fn null_as_zero<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Default + Deserialize<'de>,
-{
-    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }

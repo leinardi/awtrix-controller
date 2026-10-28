@@ -100,7 +100,7 @@ fn stats_round_trip() {
         bri: 128,
         hum: 55,
         indicator1: true,
-        indicator2: false,
+        indicator2: true,
         indicator3: true,
         ip_address: "192.168.1.42".into(),
         ldr_raw: 400,
@@ -117,6 +117,29 @@ fn stats_round_trip() {
     };
     let json = to_json(&original);
     assert_eq!(Stats::from_json(json.as_bytes()).expect("decode"), original);
+}
+
+#[test]
+fn stats_decoder_handles_every_serialized_key() {
+    let mut fields = serde_json::to_value(Stats::default()).expect("serialize stats");
+    for (key, value) in fields.as_object_mut().expect("stats object") {
+        *value = match value {
+            serde_json::Value::String(_) => serde_json::json!("nonempty"),
+            serde_json::Value::Bool(_) => serde_json::json!(true),
+            serde_json::Value::Number(_) => serde_json::json!(42),
+            serde_json::Value::Null
+            | serde_json::Value::Array(_)
+            | serde_json::Value::Object(_) => {
+                panic!("unexpected stats field {key}: {value:?}")
+            }
+        };
+    }
+    let payload = serde_json::to_vec(&fields).expect("serialize populated stats");
+    let decoded = Stats::from_json(&payload).expect("decode every field");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("serialize decoded stats"),
+        fields
+    );
 }
 
 /// Go's `encoding/json` behaviour on the stats payload, which the Go decoder relied on without a

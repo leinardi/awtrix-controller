@@ -290,7 +290,7 @@ impl Broker {
     /// 5. shut the broker runtime down, which drops any connection still left;
     /// 6. wait for the broker thread to finish, leaving it behind with a warning if it does not.
     ///
-    /// Returns at most 100 ms after `deadline`.
+    /// Returns at most `SHUTDOWN_GRACE` after `deadline`.
     pub async fn shutdown(self, deadline: Instant) {
         let Self {
             handle,

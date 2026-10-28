@@ -219,8 +219,8 @@ fn fog() {
 }
 
 #[test]
-fn fog_visibility_thresholds_control_numeric_alerts() {
-    for code in [Some(45), Some(0), None] {
+fn fog_visibility_thresholds_apply_to_both_fog_codes() {
+    for code in [Some(45), Some(48)] {
         for (visibility, expected) in [
             (100.0, Some(Severity::Severe)),
             (200.0, Some(Severity::Warning)),
@@ -240,6 +240,33 @@ fn fog_visibility_thresholds_control_numeric_alerts() {
     config.fog_visibility_warn_m = 100.0;
     let step = point(0, 45, 0.0, 0.0, 5.0, 4.0, 5.0, Some(500.0));
     assert!(detect_events(&[step], now(), &config).is_empty());
+}
+
+#[test]
+fn poor_visibility_without_a_fog_code_does_not_raise_fog() {
+    for code in [Some(0), Some(65), Some(73), None] {
+        let mut step = point(0, 73, 6.0, 1.0, 5.0, 4.0, 5.0, Some(150.0));
+        step.weather_code = code;
+        let events = detect_events(&[step], now(), &config());
+        assert!(
+            events
+                .iter()
+                .all(|event| event.event_type != EventType::Fog),
+            "{code:?}: {events:?}"
+        );
+        if code == Some(73) {
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.event_type == EventType::Snow)
+            );
+        }
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == EventType::HeavyRain)
+        );
+    }
 }
 
 #[test]
