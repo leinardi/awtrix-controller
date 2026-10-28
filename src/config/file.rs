@@ -25,6 +25,8 @@
 //! The configuration file as written: every field optional, decoded leniently the way yaml.v3
 //! decoded it (see [`lenient`](super::lenient)). Unknown keys are ignored.
 
+use std::fmt;
+
 use serde::Deserialize;
 
 use super::lenient;
@@ -50,7 +52,7 @@ pub(super) struct FileConfig {
     pub log_format: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub(super) struct FileMqtt {
     #[serde(deserialize_with = "lenient::int")]
@@ -61,6 +63,18 @@ pub(super) struct FileMqtt {
     pub username: String,
     #[serde(deserialize_with = "lenient::or_default")]
     pub password: String,
+}
+
+impl fmt::Debug for FileMqtt {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FileMqtt")
+            .field("port", &self.port)
+            .field("ws_port", &self.ws_port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]

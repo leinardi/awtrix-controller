@@ -26,7 +26,7 @@
 //! local wall-clock time and is published to every connected device.
 //!
 //! Every occurrence is a local date and time resolved with
-//! [`resolve_local`](crate::clock::resolve_local) (Q6), so a time in a daylight-saving gap fires
+//! [`resolve_local`] (Q6), so a time in a daylight-saving gap fires
 //! shifted forward by the gap and a time in a fold fires once, at the earlier instant. A day of the
 //! month past the month's end fires on its last day (Q4), and so does a yearly `02-29` outside leap
 //! years (Q5).

@@ -28,7 +28,7 @@
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use jiff::tz::TimeZone;
@@ -44,6 +44,7 @@ use crate::clock::Clock;
 use crate::config::{LocationConfig, WeatherConfig, load_time_zone};
 use crate::model::{AppContent, Notification, OverlayEffect, TextContent};
 use crate::scheduler::Scheduler;
+use crate::state::{self, StateError};
 
 /// How long one poll may wait for the forecast.
 const POLL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -85,8 +86,16 @@ pub trait Publisher: Send + Sync {
 #[derive(Default)]
 struct Memory {
     overlay: Option<OverlayEffect>,
-    last_notified: Vec<EventCandidate>,
-    last_notified_at: Option<Timestamp>,
+    last_notified: Option<NotifiedForecast>,
+}
+
+/// The notification batch and the age of the forecast it came from. A later successful poll
+/// without new notifications must not refresh this batch's age.
+#[derive(Clone)]
+struct NotifiedForecast {
+    candidates: Vec<EventCandidate>,
+    notified_at: Timestamp,
+    fetched_at: Timestamp,
 }
 
 /// Polls the forecast and publishes overlays and warnings.
@@ -167,14 +176,18 @@ impl Controller {
 
         let interval = minutes(self.config.poll_interval_minutes);
         let controller = Arc::downgrade(self);
+        let failures = scheduler.failures();
         scheduler.schedule(
             "weather:poll",
             self.clock.now(),
             move || {
                 let controller = controller.clone();
+                let failures = failures.clone();
                 async move {
-                    if let Some(controller) = controller.upgrade() {
-                        controller.poll().await;
+                    if let Some(controller) = controller.upgrade()
+                        && let Err(error) = controller.poll().await
+                    {
+                        failures.report(error);
                     }
                 }
             },
@@ -182,25 +195,28 @@ impl Controller {
         );
     }
 
-    /// Sends a newly connected device the warnings of the last poll that notified, unless there
-    /// were none or they are older than `notification_repeat_minutes` (the next poll then decides).
-    pub async fn on_device_connected(&self, client_id: &str) {
-        let (candidates, sent_at) = {
-            let memory = self.memory();
-            (memory.last_notified.clone(), memory.last_notified_at)
+    /// Sends a newly connected device the warnings of the last poll that notified, unless
+    /// the repeat interval or the forecast's stale-data TTL has elapsed.
+    ///
+    /// # Errors
+    /// The notification cache is poisoned.
+    pub async fn on_device_connected(&self, client_id: &str) -> Result<(), StateError> {
+        let cached = {
+            let memory = self.memory()?;
+            memory.last_notified.clone()
         };
-        let Some(sent_at) = sent_at else {
-            return;
+        let Some(cached) = cached else {
+            return Ok(());
         };
-        if candidates.is_empty() {
-            return;
-        }
+        let now = self.clock.now();
         let repeat_interval = minutes(self.config.notification_repeat_minutes);
-        if self.clock.now().duration_since(sent_at) >= repeat_interval {
-            return;
+        let ttl = minutes(self.config.data_stale_ttl_minutes);
+        if now.duration_since(cached.notified_at) >= repeat_interval
+            || now.duration_since(cached.fetched_at) >= ttl
+        {
+            return Ok(());
         }
-
-        for candidate in &candidates {
+        for candidate in &cached.candidates {
             let published = self.publish_to(client_id, candidate).await;
             if let Err(error) = published {
                 warn!(
@@ -211,11 +227,12 @@ impl Controller {
                 );
             }
         }
+        Ok(())
     }
 
     /// One poll: fetch, update the overlay, detect events and publish those to notify. A failed
     /// fetch clears the overlay and keeps every event's state; a cancelled one does nothing.
-    async fn poll(&self) {
+    async fn poll(&self) -> Result<(), StateError> {
         let fetch_start = self.clock.now();
         debug!(
             latitude = self.latitude,
@@ -232,14 +249,12 @@ impl Controller {
         );
         let points = match tokio::time::timeout(POLL_TIMEOUT, fetch).await {
             Ok(Ok(points)) => points,
-            Ok(Err(FetchError::Cancelled)) => return,
+            Ok(Err(FetchError::Cancelled)) => return Ok(()),
             Ok(Err(error)) => {
-                self.fetch_failed(&error).await;
-                return;
+                return self.fetch_failed(&error).await;
             }
             Err(elapsed) => {
-                self.fetch_failed(&elapsed).await;
-                return;
+                return self.fetch_failed(&elapsed).await;
             }
         };
 
@@ -253,7 +268,7 @@ impl Controller {
             horizon_minutes = self.config.overlay_horizon_minutes,
             "weather: overlay selected"
         );
-        self.apply_overlay(selected.clone()).await;
+        self.apply_overlay(selected.clone()).await?;
 
         let candidates = detect_events(&points, now, &self.config);
         for candidate in &candidates {
@@ -266,20 +281,19 @@ impl Controller {
             );
         }
 
-        let to_notify = self
-            .states
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .process(
-                &candidates,
-                now,
-                minutes(self.config.notification_repeat_minutes),
-                self.config.inactive_after_missing_polls,
-            );
+        let to_notify = state::checked(self.states.lock(), "weather event state")?.process(
+            &candidates,
+            now,
+            minutes(self.config.notification_repeat_minutes),
+            self.config.inactive_after_missing_polls,
+        );
         if !to_notify.is_empty() {
-            let mut memory = self.memory();
-            memory.last_notified.clone_from(&to_notify);
-            memory.last_notified_at = Some(now);
+            let mut memory = self.memory()?;
+            memory.last_notified = Some(NotifiedForecast {
+                candidates: to_notify.clone(),
+                notified_at: now,
+                fetched_at: fetch_start,
+            });
         }
 
         debug!(
@@ -294,21 +308,19 @@ impl Controller {
         for candidate in &to_notify {
             self.publish_candidate(candidate, now).await;
         }
+        Ok(())
     }
 
-    async fn fetch_failed(&self, error: &(dyn std::fmt::Display + Sync)) {
+    async fn fetch_failed(&self, error: &(dyn std::fmt::Display + Sync)) -> Result<(), StateError> {
         warn!(error = %error, "weather: fetch failed; clearing overlay");
-        self.states
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .on_fetch_failure();
-        self.apply_overlay(None).await;
+        state::checked(self.states.lock(), "weather event state")?.on_fetch_failure();
+        self.apply_overlay(None).await
     }
 
     /// Applies `overlay` only when it differs from the current one.
-    async fn apply_overlay(&self, overlay: Option<OverlayEffect>) {
+    async fn apply_overlay(&self, overlay: Option<OverlayEffect>) -> Result<(), StateError> {
         let changed = {
-            let mut memory = self.memory();
+            let mut memory = self.memory()?;
             let changed = memory.overlay != overlay;
             memory.overlay.clone_from(&overlay);
             changed
@@ -317,6 +329,7 @@ impl Controller {
         if changed {
             self.publisher.set_overlay(overlay).await;
         }
+        Ok(())
     }
 
     /// Publishes one event to every connected device, logging at info when at least one got it
@@ -397,8 +410,8 @@ impl Controller {
             .to_string()
     }
 
-    fn memory(&self) -> std::sync::MutexGuard<'_, Memory> {
-        self.memory.lock().unwrap_or_else(PoisonError::into_inner)
+    fn memory(&self) -> Result<std::sync::MutexGuard<'_, Memory>, StateError> {
+        state::checked(self.memory.lock(), "weather notification cache")
     }
 }
 

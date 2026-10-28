@@ -26,10 +26,10 @@
 //!
 //! The file is decoded into an all-optional layer ([`file`]) that reads YAML the way the Go
 //! implementation's yaml.v3 did, then turned into a [`Config`] whose every field is concrete:
-//! required fields are checked, defaults are applied (all here, from [`defaults`]), and value
+//! required fields are checked, defaults are applied (all here, from `defaults`), and value
 //! constraints are validated.
 //!
-//! The weather thresholds are the one place this differs from Go (Q2): Go replaced an explicit
+//! Weather threshold defaults differ from Go (Q2): Go replaced an explicit
 //! `0` by the default, so `frost_temp_c: 0` could not be configured. Here only an absent (or
 //! `null`) threshold takes the default; any given value is used, and validation checks its range
 //! instead.
@@ -43,13 +43,28 @@ mod timezone;
 #[cfg(test)]
 mod tests;
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use thiserror::Error;
 use tracing::warn;
 
-pub use defaults::*;
+pub use defaults::{
+    DEFAULT_CONFIG_PATH, DEFAULT_ENERGY_SAVING_END, DEFAULT_ENERGY_SAVING_START, DEFAULT_MQTT_PORT,
+    DEFAULT_SCHEDULED_NOTIFICATION_DURATION, DEFAULT_SCHEDULED_NOTIFICATION_ICON,
+    DEFAULT_SCHEDULED_NOTIFICATION_SCROLL_SPEED, DEFAULT_SCHEDULED_NOTIFICATION_TIME,
+    DEFAULT_THEME_DAY_ACCENT, DEFAULT_THEME_DAY_CONTENT, DEFAULT_THEME_NIGHT_ACCENT,
+    DEFAULT_THEME_NIGHT_CONTENT, DEFAULT_WEATHER_DATA_STALE_TTL_MINUTES,
+    DEFAULT_WEATHER_FOG_VISIBILITY_SEVERE_M, DEFAULT_WEATHER_FOG_VISIBILITY_WARN_M,
+    DEFAULT_WEATHER_FROST_DEW_POINT_DELTA_C, DEFAULT_WEATHER_FROST_TEMP_C,
+    DEFAULT_WEATHER_FROST_WARN_PRECIP_MM, DEFAULT_WEATHER_FROST_WARN_PRECIP_WINDOW_H,
+    DEFAULT_WEATHER_GUST_SEVERE_KMH, DEFAULT_WEATHER_GUST_WARN_KMH,
+    DEFAULT_WEATHER_HEAVY_RAIN_MM_PER_15MIN, DEFAULT_WEATHER_INACTIVE_AFTER_MISSING_POLLS,
+    DEFAULT_WEATHER_NOTIFICATION_HORIZON_HOURS, DEFAULT_WEATHER_NOTIFICATION_REPEAT_MINUTES,
+    DEFAULT_WEATHER_NOTIFICATION_TEXT_REPEAT, DEFAULT_WEATHER_OVERLAY_HORIZON_MINUTES,
+    DEFAULT_WEATHER_POLL_INTERVAL_MINUTES,
+};
 pub use time_of_day::{MonthDay, ParseError, TimeOfDay};
 pub use timezone::{UnknownTimeZone, load_time_zone};
 
@@ -77,7 +92,7 @@ pub struct Config {
 }
 
 /// The embedded MQTT broker's settings.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MqttConfig {
     /// The TCP listen port.
     pub port: i64,
@@ -87,6 +102,18 @@ pub struct MqttConfig {
     pub username: String,
     /// The password every device must use.
     pub password: String,
+}
+
+impl fmt::Debug for MqttConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MqttConfig")
+            .field("port", &self.port)
+            .field("ws_port", &self.ws_port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 /// The coordinates sunrise and sunset are computed for.
@@ -191,7 +218,7 @@ pub struct WeatherConfig {
     pub notification_repeat_minutes: i64,
     /// How many consecutive polls without an event make it inactive.
     pub inactive_after_missing_polls: i64,
-    /// The maximum age of forecast data, in minutes.
+    /// The maximum age of the forecast behind cached notification replays, in minutes.
     pub data_stale_ttl_minutes: i64,
     /// How many times a notification's text scrolls.
     pub notification_text_repeat: i64,
@@ -295,6 +322,14 @@ pub enum ConfigError {
         value: f64,
         /// The range, in words.
         expected: &'static str,
+    },
+    /// A weather interval or missing-poll count is negative after defaulting.
+    #[error("weather.{field} = {value}: must be a positive integer (0 selects the default)")]
+    InvalidPositiveInteger {
+        /// The configuration key.
+        field: &'static str,
+        /// The value given.
+        value: i64,
     },
     /// `log_format` is neither `text` nor `json`.
     #[error("log_format {value:?}: must be \"text\" or \"json\"")]
@@ -591,33 +626,52 @@ fn threshold(
     }
 }
 
+fn positive_or_default(
+    value: Option<i64>,
+    default: i64,
+    field: &'static str,
+) -> Result<i64, ConfigError> {
+    let value = non_zero_or(value, default);
+    if value > 0 {
+        Ok(value)
+    } else {
+        Err(ConfigError::InvalidPositiveInteger { field, value })
+    }
+}
+
 fn weather(file: FileWeather) -> Result<WeatherConfig, ConfigError> {
     Ok(WeatherConfig {
         enabled: file.enabled.unwrap_or(false),
-        poll_interval_minutes: non_zero_or(
+        poll_interval_minutes: positive_or_default(
             file.poll_interval_minutes,
             DEFAULT_WEATHER_POLL_INTERVAL_MINUTES,
-        ),
-        overlay_horizon_minutes: non_zero_or(
+            "poll_interval_minutes",
+        )?,
+        overlay_horizon_minutes: positive_or_default(
             file.overlay_horizon_minutes,
             DEFAULT_WEATHER_OVERLAY_HORIZON_MINUTES,
-        ),
-        notification_horizon_hours: non_zero_or(
+            "overlay_horizon_minutes",
+        )?,
+        notification_horizon_hours: positive_or_default(
             file.notification_horizon_hours,
             DEFAULT_WEATHER_NOTIFICATION_HORIZON_HOURS,
-        ),
-        notification_repeat_minutes: non_zero_or(
+            "notification_horizon_hours",
+        )?,
+        notification_repeat_minutes: positive_or_default(
             file.notification_repeat_minutes,
             DEFAULT_WEATHER_NOTIFICATION_REPEAT_MINUTES,
-        ),
-        inactive_after_missing_polls: non_zero_or(
+            "notification_repeat_minutes",
+        )?,
+        inactive_after_missing_polls: positive_or_default(
             file.inactive_after_missing_polls,
             DEFAULT_WEATHER_INACTIVE_AFTER_MISSING_POLLS,
-        ),
-        data_stale_ttl_minutes: non_zero_or(
+            "inactive_after_missing_polls",
+        )?,
+        data_stale_ttl_minutes: positive_or_default(
             file.data_stale_ttl_minutes,
             DEFAULT_WEATHER_DATA_STALE_TTL_MINUTES,
-        ),
+            "data_stale_ttl_minutes",
+        )?,
         notification_text_repeat: non_zero_or(
             file.notification_text_repeat,
             DEFAULT_WEATHER_NOTIFICATION_TEXT_REPEAT,

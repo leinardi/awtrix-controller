@@ -385,7 +385,22 @@ fn single_dash_long_form_is_detected() {
         &["-vc", "x.yaml"],
         &["-l", "debug"],
         &["--", "-config"],
+        &["--config", "-version", "--version"],
+        &["-c", "-version", "--version"],
+        &["-vc", "-version"],
+        &["--test-notification-text", "-version", "--version"],
+        &["--test-notification-text=-version", "--version"],
+        &["-c-version", "--version"],
     ] {
         assert_eq!(single_dash_long_form(&args(list)), None, "{list:?}");
     }
+    assert_eq!(
+        single_dash_long_form(&args(&[
+            "--test-notification-text",
+            "-version",
+            "-config",
+            "x.yaml"
+        ])),
+        Some(("-config".to_owned(), "--config".to_owned()))
+    );
 }

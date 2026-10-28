@@ -38,6 +38,7 @@ pub mod notification;
 pub mod run;
 pub mod scheduler;
 pub mod settings;
+pub mod state;
 pub mod version;
 pub mod weather;
 

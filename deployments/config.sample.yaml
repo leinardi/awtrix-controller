@@ -122,8 +122,9 @@ weather:
   enabled: true
 
   # Polling
+  # Intervals, horizons, TTL and missing-poll count must be positive; 0 selects the default.
   # poll_interval_minutes: 15       # how often to fetch Open-Meteo data
-  # data_stale_ttl_minutes: 45      # discard cached data older than this
+  # data_stale_ttl_minutes: 45      # maximum fetch age for cached warning replays
 
   # Overlay — look-ahead window for selecting the active overlay effect
   # overlay_horizon_minutes: 60
@@ -139,7 +140,7 @@ weather:
   # gust_warn_kmh: 45.0             # wind gust warning threshold
   # gust_severe_kmh: 60.0           # wind gust severe threshold
   # heavy_rain_mm_per_15min: 5.0    # precipitation threshold for heavy rain
-  # fog_visibility_warn_m: 1000.0   # visibility warning threshold
+  # fog_visibility_warn_m: 1000.0   # warning below this visibility (WMO fog codes 45/48 only)
   # fog_visibility_severe_m: 200.0  # visibility severe threshold
   # frost_temp_c: 1.5               # air temperature ceiling (°C) for frost-risk warning
   # frost_dew_point_delta_c: 1.0    # max temp-dewpoint spread (°C) for frost-risk warning

@@ -218,6 +218,77 @@ fn fog() {
     );
 }
 
+#[test]
+fn fog_visibility_thresholds_apply_to_both_fog_codes() {
+    for code in [Some(45), Some(48)] {
+        for (visibility, expected) in [
+            (100.0, Some(Severity::Severe)),
+            (200.0, Some(Severity::Warning)),
+            (500.0, Some(Severity::Warning)),
+            (1000.0, None),
+        ] {
+            let mut step = point(0, 45, 0.0, 0.0, 5.0, 4.0, 5.0, Some(visibility));
+            step.weather_code = code;
+            assert_eq!(
+                severity_of(&[step], EventType::Fog),
+                expected,
+                "{code:?} {visibility}"
+            );
+        }
+    }
+    let mut config = config();
+    config.fog_visibility_warn_m = 100.0;
+    let step = point(0, 45, 0.0, 0.0, 5.0, 4.0, 5.0, Some(500.0));
+    assert!(detect_events(&[step], now(), &config).is_empty());
+}
+
+#[test]
+fn poor_visibility_without_a_fog_code_does_not_raise_fog() {
+    for code in [Some(0), Some(65), Some(73), None] {
+        let mut step = point(0, 73, 6.0, 1.0, 5.0, 4.0, 5.0, Some(150.0));
+        step.weather_code = code;
+        let events = detect_events(&[step], now(), &config());
+        assert!(
+            events
+                .iter()
+                .all(|event| event.event_type != EventType::Fog),
+            "{code:?}: {events:?}"
+        );
+        if code == Some(73) {
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.event_type == EventType::Snow)
+            );
+        }
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event_type == EventType::HeavyRain)
+        );
+    }
+}
+
+#[test]
+fn huge_frost_window_saturates_instead_of_becoming_empty() {
+    let config = WeatherConfig {
+        frost_warn_precip_window_h: 1e308,
+        ..config()
+    };
+    let steps = [
+        point(0, 0, 0.0, 0.0, 1.0, 0.5, 5.0, None),
+        point(15, 0, 1.0, 0.0, 5.0, 4.0, 5.0, None),
+    ];
+    assert!(
+        detect_events(&steps, now(), &config)
+            .iter()
+            .any(|candidate| {
+                candidate.event_type == EventType::FrostRisk
+                    && candidate.severity == Severity::Warning
+            })
+    );
+}
+
 /// Go: `TestDetectEventsDisabledType`
 #[test]
 fn disabled_type_is_not_reported() {

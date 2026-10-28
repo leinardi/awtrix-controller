@@ -42,7 +42,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, error, info, warn};
 
-use crate::broker::{Broker, BrokerConfig, BrokerError, BrokerHandle, Callbacks, ClientCallback};
+use crate::broker::{
+    Broker, BrokerConfig, BrokerError, BrokerHandle, Callbacks, ClientCallback, Retention,
+};
 use crate::cli::{Cli, single_dash_long_form};
 use crate::clientstate::Registry;
 use crate::clock::{Clock, SystemClock};
@@ -54,6 +56,7 @@ use crate::model::{Notification, OverlayEffect};
 use crate::notification::{ConnectedIds, Publish, ScheduledNotifier};
 use crate::scheduler::Scheduler;
 use crate::settings::{self, Builder};
+use crate::state::{Failures, StateError};
 use crate::version::{COMMIT, DATE, VERSION};
 use crate::weather::{self, FetchFunction, PublishFuture, simulate_fetch};
 
@@ -63,8 +66,8 @@ pub const SHUTDOWN_BUDGET: Duration = Duration::from_secs(2);
 
 /// A configuration that cannot be read, or a bad flag.
 const EXIT_CONFIG: u8 = 1;
-/// A component that cannot start, such as a port already in use.
-const EXIT_STARTUP: u8 = 2;
+/// A component that cannot start or whose shared state has become unusable.
+const EXIT_COMPONENT: u8 = 2;
 
 /// Reads an environment variable; `None` when unset.
 pub type Getenv<'getenv> = &'getenv dyn Fn(&str) -> Option<String>;
@@ -74,13 +77,15 @@ pub type Getenv<'getenv> = &'getenv dyn Fn(&str) -> Option<String>;
 pub struct Options {
     /// Replaces the Open-Meteo fetch.
     pub fetch: Option<FetchFunction>,
+    /// Replaces the device registry, allowing state-failure tests without a real device.
+    pub registry: Option<Arc<Registry>>,
 }
 
 /// How a run ended.
 #[derive(Debug)]
 pub struct Exit {
     /// The process exit code: 0 after a clean shutdown, 1 for a configuration or flag error, 2
-    /// when a component cannot start.
+    /// when a component cannot start or its shared state becomes unusable.
     pub code: ExitCode,
     /// When the shutdown started, plus [`SHUTDOWN_BUDGET`]: the time by which the caller must
     /// have ended its runtime too. `None` when the run never got that far.
@@ -216,25 +221,29 @@ async fn start(
     let _cancel_components = components.clone().drop_guard();
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    let registry = Arc::new(Registry::new());
+    let registry = options
+        .registry
+        .unwrap_or_else(|| Arc::new(Registry::new()));
     let scheduler = Scheduler::new(Arc::clone(&clock), &components);
+    let failures = scheduler.failures();
     // Everything that reaches the devices goes through one queue, served once the broker is up.
     let (events, mut queued) = mpsc::unbounded_channel();
 
     let Some(builder) = start_modes(config, &zone, &clock, &scheduler, &events) else {
-        return Exit::early(EXIT_STARTUP);
+        return Exit::early(EXIT_COMPONENT);
     };
-    let broker = match start_broker(config, &registry, &events).await {
+    let broker = match start_broker(config, &registry, &events, &failures).await {
         Ok(broker) => broker,
         Err(broker_error) => {
             error!(error = %broker_error, "failed to create MQTT broker");
-            return Exit::early(EXIT_STARTUP);
+            return Exit::early(EXIT_COMPONENT);
         }
     };
     let devices = Arc::new(Devices {
         registry,
         broker: broker.handle(),
         builder,
+        failures: failures.clone(),
     });
     start_notifications(config, zone, &clock, &scheduler, &devices);
     let weather = config.weather.enabled.then(|| {
@@ -273,9 +282,14 @@ async fn start(
 
     let stop = wait_for_stop(&shutdown);
     tokio::pin!(stop);
-    loop {
+    let failed = loop {
         tokio::select! {
-            () = &mut stop => break,
+            biased;
+            failure = failures.failed() => {
+                error!(error = %failure, "critical shared state failed; shutting down");
+                break true;
+            }
+            () = &mut stop => break false,
             Some(event) = queued.recv() => {
                 tokio::spawn(handle(
                     event,
@@ -285,9 +299,9 @@ async fn start(
                 ));
             }
         }
-    }
+    };
 
-    info!("shutdown signal received");
+    info!(failed, "shutdown started");
     let deadline = Instant::now() + SHUTDOWN_BUDGET;
     // Neither waits for a weather fetch in flight: a hung one is left to the runtime's end.
     components.cancel();
@@ -295,7 +309,11 @@ async fn start(
     broker.shutdown(deadline).await;
     info!("shutdown complete");
     Exit {
-        code: ExitCode::SUCCESS,
+        code: if failed {
+            ExitCode::from(EXIT_COMPONENT)
+        } else {
+            ExitCode::SUCCESS
+        },
         deadline: Some(deadline),
     }
 }
@@ -377,7 +395,7 @@ fn start_notifications(
     };
     let connected_ids: ConnectedIds = {
         let devices = Arc::clone(devices);
-        Arc::new(move || devices.registry.connected_ids())
+        Arc::new(move || devices.connected_ids())
     };
     ScheduledNotifier::new(
         config.scheduled_notifications.clone(),
@@ -424,8 +442,11 @@ async fn handle(
     match event {
         Event::Connected(client_id) => devices.push_settings(&client_id).await,
         Event::Ready(client_id) => {
-            if let Some(weather) = weather {
-                weather.on_device_connected(&client_id).await;
+            if let Some(weather) = weather
+                && let Err(error) = weather.on_device_connected(&client_id).await
+            {
+                devices.failures.report(error);
+                return;
             }
             if let Some(notification) = test_notification {
                 let published = devices
@@ -446,6 +467,7 @@ async fn start_broker(
     config: &Config,
     registry: &Arc<Registry>,
     events: &mpsc::UnboundedSender<Event>,
+    failures: &Failures,
 ) -> Result<Broker, BrokerError> {
     let any_address = if TcpListener::bind((Ipv6Addr::UNSPECIFIED, 0)).is_ok() {
         IpAddr::V6(Ipv6Addr::UNSPECIFIED)
@@ -474,6 +496,10 @@ async fn start_broker(
     let callbacks = Callbacks {
         on_connected: queue(Event::Connected),
         on_device_ready: queue(Event::Ready),
+        on_state_error: {
+            let failures = failures.clone();
+            Arc::new(move |error| failures.report(error))
+        },
     };
     Broker::start(broker_config, Arc::clone(registry), callbacks).await
 }
@@ -484,18 +510,39 @@ struct Devices {
     registry: Arc<Registry>,
     broker: BrokerHandle,
     builder: Arc<Builder>,
+    failures: Failures,
 }
 
 impl Devices {
+    fn connected_ids(&self) -> Vec<String> {
+        match self.registry.connected_ids() {
+            Ok(ids) => ids,
+            Err(error) => {
+                self.failures.report(error);
+                Vec::new()
+            }
+        }
+    }
+
     async fn push_settings(&self, client_id: &str) {
-        let pushed = settings::push(client_id, &self.broker, &self.builder.build()).await;
+        if self.failures.error().is_some() {
+            return;
+        }
+        let settings = match self.builder.build() {
+            Ok(settings) => settings,
+            Err(error) => {
+                self.failures.report(error);
+                return;
+            }
+        };
+        let pushed = settings::push(client_id, &self.broker, &settings).await;
         if let Err(push_error) = pushed {
             warn!(client_id, error = %push_error, "failed to push settings to client");
         }
     }
 
     async fn push_settings_to_all(&self) {
-        for client_id in self.registry.connected_ids() {
+        for client_id in self.connected_ids() {
             self.push_settings(&client_id).await;
         }
     }
@@ -506,6 +553,9 @@ impl Devices {
         client_id: &str,
         notification: &Notification,
     ) -> Result<(), NotifyError> {
+        if let Some(error) = self.failures.error() {
+            return Err(error.into());
+        }
         let payload =
             serde_json::to_vec(notification).map_err(|source| NotifyError::Serialize {
                 client_id: client_id.to_owned(),
@@ -513,7 +563,7 @@ impl Devices {
             })?;
         let topic = format!("{client_id}/notify");
         self.broker
-            .publish(&topic, payload, false)
+            .publish(&topic, payload, Retention::Transient)
             .await
             .map_err(|source| NotifyError::Publish { topic, source })
     }
@@ -521,7 +571,7 @@ impl Devices {
 
 impl weather::Publisher for Devices {
     fn connected_ids(&self) -> Vec<String> {
-        self.registry.connected_ids()
+        Self::connected_ids(self)
     }
 
     fn publish(&self, client_id: &str, notification: Arc<Notification>) -> PublishFuture {
@@ -539,7 +589,10 @@ impl weather::Publisher for Devices {
         &self,
         overlay: Option<OverlayEffect>,
     ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.builder.set_overlay(overlay);
+        if let Err(error) = self.builder.set_overlay(overlay) {
+            self.failures.report(error);
+            return Box::pin(future::ready(()));
+        }
         let devices = self.clone();
         Box::pin(async move { devices.push_settings_to_all().await })
     }
@@ -548,6 +601,9 @@ impl weather::Publisher for Devices {
 /// A notification that could not be published.
 #[derive(Debug, thiserror::Error)]
 enum NotifyError {
+    /// Critical state has already failed; no new notification may be sent.
+    #[error(transparent)]
+    State(#[from] StateError),
     /// The payload could not be serialized.
     #[error("run: marshal notification for {client_id}: {source}")]
     Serialize {
@@ -620,5 +676,53 @@ async fn wait_for_stop(shutdown: &CancellationToken) {
             () = shutdown.cancelled() => {}
             _ = tokio::signal::ctrl_c() => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn poisoned_registry_causes_bounded_nonzero_shutdown() {
+        let mut config = config::parse("mqtt:\n  username: user\n  password: pass\nlocation:\n  latitude: 48\n  longitude: 11\nweather:\n  enabled: true\n").expect("config");
+        config.mqtt.port = 0;
+        let registry = Arc::new(Registry::new());
+        crate::clientstate::poison(&registry);
+        let (started, mut requests) = mpsc::unbounded_channel();
+        let fetch: FetchFunction = Arc::new(move |_, _, _, _| {
+            let _ = started.send(Instant::now());
+            Box::pin(future::ready(Ok(vec![weather::ForecastPoint {
+                time: SystemClock.now() + jiff::SignedDuration::from_mins(15),
+                weather_code: Some(95),
+                precipitation: None,
+                snowfall: None,
+                temperature_2m: None,
+                dew_point_2m: None,
+                wind_gusts_10m: None,
+                visibility: None,
+            }])))
+        });
+        let options = Options {
+            fetch: Some(fetch),
+            registry: Some(registry),
+        };
+        let exit = tokio::time::timeout(
+            Duration::from_secs(5),
+            start(
+                &config,
+                TimeZone::UTC,
+                None,
+                None,
+                CancellationToken::new(),
+                options,
+            ),
+        )
+        .await
+        .expect("controller ended");
+        assert_eq!(exit.code, ExitCode::from(2));
+        assert!(exit.deadline.is_some());
+        let failed_at = requests.try_recv().expect("failure-inducing fetch ran");
+        assert!(failed_at.elapsed() <= SHUTDOWN_BUDGET + Duration::from_millis(100));
     }
 }

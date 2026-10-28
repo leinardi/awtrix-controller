@@ -35,7 +35,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Weak};
 
 use jiff::Timestamp;
 use jiff::civil::{Date, Time};
@@ -159,8 +159,6 @@ pub struct EnergySaving {
     clock: Arc<dyn Clock>,
     on_change: OnActiveChange,
     active: AtomicBool,
-    /// The boundary the scheduled job is waiting for.
-    due: Mutex<Timestamp>,
 }
 
 impl EnergySaving {
@@ -182,7 +180,6 @@ impl EnergySaving {
             clock,
             on_change,
             active: AtomicBool::new(false),
-            due: Mutex::new(Timestamp::UNIX_EPOCH),
         }))
     }
 
@@ -195,10 +192,10 @@ impl EnergySaving {
 
         let on_transition = Arc::downgrade(self);
         let on_reschedule = Arc::downgrade(self);
-        scheduler.schedule(
+        scheduler.schedule_with_due(
             "energysaving",
             fire_at,
-            move || transition(&on_transition),
+            move |due| transition(&on_transition, due),
             move |fired| {
                 on_reschedule
                     .upgrade()
@@ -218,27 +215,24 @@ impl EnergySaving {
         &self.window
     }
 
-    /// The next boundary after `after`, remembered as the one the job waits for. When none is
+    /// The next boundary after `after`. When none is
     /// found the state is re-checked at the next local midnight, so the controller never stalls.
     fn arm(&self, after: Timestamp) -> Timestamp {
-        let fire_at = self.window.next_transition(after).unwrap_or_else(|| {
+        self.window.next_transition(after).unwrap_or_else(|| {
             error!(
                 after = %after,
                 search_days = MAX_WINDOW_SEARCH_DAYS,
                 "energysaving: no window boundary found; re-checking at next midnight"
             );
             next_local_midnight(after, self.window.zone())
-        });
-        *self.due.lock().unwrap_or_else(PoisonError::into_inner) = fire_at;
-        fire_at
+        })
     }
 
     /// Re-derives the state at the boundary that fired and reports whether it changed. The state
     /// is read at the boundary or the current time, whichever is later: a wall clock stepped back
     /// a little would otherwise read the old state at the boundary, and the next boundary,
     /// computed from this one, would skip the change entirely.
-    fn update(&self) -> Option<bool> {
-        let due = *self.due.lock().unwrap_or_else(PoisonError::into_inner);
+    fn update(&self, due: Timestamp) -> Option<bool> {
         let active = self.window.is_active(self.clock.now().max(due));
         let previous = self.active.swap(active, Ordering::SeqCst);
         (previous != active).then_some(active)
@@ -247,11 +241,14 @@ impl EnergySaving {
 
 /// The scheduled action: update the state and report a change. A controller that has been
 /// dropped does nothing.
-fn transition(controller: &Weak<EnergySaving>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+fn transition(
+    controller: &Weak<EnergySaving>,
+    due: Timestamp,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let Some(controller) = controller.upgrade() else {
         return Box::pin(std::future::ready(()));
     };
-    match controller.update() {
+    match controller.update(due) {
         Some(active) => (controller.on_change)(active),
         None => Box::pin(std::future::ready(())),
     }

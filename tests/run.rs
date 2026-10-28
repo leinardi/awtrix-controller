@@ -288,6 +288,14 @@ fn configuration_warnings_reach_the_log() {
 async fn flags_that_end_the_run_at_once() {
     for (args, expected) in [
         (vec!["--version"], ExitCode::SUCCESS),
+        (
+            vec!["--test-notification-text", "-version", "--version"],
+            ExitCode::SUCCESS,
+        ),
+        (
+            vec!["--test-notification-text=-version", "--version"],
+            ExitCode::SUCCESS,
+        ),
         (vec!["-v"], ExitCode::SUCCESS),
         (vec!["--help"], ExitCode::SUCCESS),
         (vec!["--unknown"], ExitCode::from(1)),
@@ -348,7 +356,10 @@ fn shutdown_within_the_budget_while_a_fetch_hangs() {
             Ok(Vec::new())
         })
     });
-    let options = Options { fetch: Some(fetch) };
+    let options = Options {
+        fetch: Some(fetch),
+        ..Options::default()
+    };
 
     let (exit, cancelled_at) = runtime.block_on(drive(&[], true, &options, |port, shutdown| {
         let fetch_started = Arc::clone(&fetch_started);

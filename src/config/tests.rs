@@ -465,6 +465,40 @@ fn threshold_ranges_are_validated() {
     assert!((parse_ok(&text).weather.frost_temp_c + 3.5).abs() < f64::EPSILON);
 }
 
+#[test]
+fn negative_weather_intervals_are_rejected() {
+    for field in [
+        "poll_interval_minutes",
+        "overlay_horizon_minutes",
+        "notification_horizon_hours",
+        "notification_repeat_minutes",
+        "inactive_after_missing_polls",
+        "data_stale_ttl_minutes",
+    ] {
+        let text = with_minimal(&format!("weather:\n  {field}: -1\n"));
+        let error = parse(&text).expect_err("negative interval");
+        assert!(
+            matches!(error, ConfigError::InvalidPositiveInteger { field: reported, value: -1 } if reported == field),
+            "{field}: {error}"
+        );
+        let text = with_minimal(&format!("weather:\n  {field}: 0\n"));
+        assert!(parse(&text).is_ok(), "zero {field} must retain its default");
+    }
+}
+
+#[test]
+fn credential_debug_output_is_redacted() {
+    let config = parse_ok(MINIMAL_VALID);
+    let raw: FileConfig = serde_yaml_ng::from_str(MINIMAL_VALID).expect("file config");
+    for output in [format!("{config:?}"), format!("{raw:?}")] {
+        assert!(
+            !output.contains(&config.mqtt.password),
+            "password in {output}"
+        );
+        assert!(output.contains("[REDACTED]"), "no redaction in {output}");
+    }
+}
+
 /// Go: `TestWeatherConfigFogDefaultsFalse`
 #[test]
 fn weather_fog_defaults_false() {

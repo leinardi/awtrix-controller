@@ -135,8 +135,9 @@ every connected
   over a due timer and checks it again after the action, before rearming. `Scheduler::stop`
   waits for the actions in flight; `cancel` does not. A timer outside the scheduler survives
   shutdown.
-- Day/night computes its mode in `start` and then **toggles** on each fire, so it must have
-  exactly one job: a second job, a skipped fire or a double fire inverts the mode until restart.
+- Day/night re-derives its mode at `max(now, due)` on each fire; polar midnight retries stay Night
+  and must resume at today's sunrise when sun events return. Rearm strictly after the due instant;
+  catching up must re-evaluate state even if a callback ran past another boundary. Keep one job.
   Energy saving re-derives its state from the window's resolved instants on every fire (at
   `max(now, due)`), and its next-transition search walks past empty windows; a change that
   compares times of day, or bounds the search to D-1..D+1, breaks restart parity.
@@ -177,10 +178,17 @@ flight. A `null` in the forecast is a missing value (Q1), skipped by the checks 
 failed fetch clears the overlay and keeps event state; the state manager decides what to notify
 (new, more severe, changed fingerprint, or older than the repeat interval), and
 `on_device_connected` replays the last batch while it is younger than
-`notification_repeat_minutes`. `--weather-wmo` replaces the fetch with a simulation for
+`notification_repeat_minutes` and its source fetch is younger than `data_stale_ttl_minutes`.
+Polls that do not notify must not refresh the cached batch's fetch timestamp.
+`--weather-wmo` replaces the fetch with a simulation for
 debugging.
 
 ### Shutdown is bounded
+
+Controller-owned state locks return `StateError` when poisoned, never a recovered guard. Critical
+failures stop scheduled work, reach the run loop through its first-failure signal, and exit `2`
+through the same bounded teardown as a signal. Do not swallow a state error as an ordinary device
+publish failure, or convert it to empty/default state without also reporting the fatal failure.
 
 `SHUTDOWN_BUDGET` (2 s) runs from the signal: the controllers' token and the scheduler are
 cancelled, the broker stops accepting and kicks every session concurrently under the remaining
@@ -288,9 +296,9 @@ and the broker and run test harnesses.
 - A behaviour that differs from 1.x needs its row in the README's migration section.
 
 A surface the code has and the docs do not mention is a finding; so is a documented one
-nothing implements, and a default in the docs that differs from the code. Known gap (verify
-before relying on it): `weather.data_stale_ttl_minutes` is parsed, defaulted and documented,
-and nothing reads it; a diff that touches it either implements it or removes it with the docs.
+nothing implements, and a default in the docs that differs from the code. Check that configured
+weather warning controls have an observable effect, including the stale-data TTL of cached
+notification replays and both visibility thresholds for fog.
 
 ## 6. Verify before you trust (don't hand-wave the gates)
 

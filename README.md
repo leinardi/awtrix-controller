@@ -119,8 +119,10 @@ take two dashes, with the value after a space or an `=` (`--config config.yaml`,
 decimal only. A repeated flag keeps its last value. Positional arguments are an error.
 
 The exit code is `0` after a clean shutdown (`SIGINT` or `SIGTERM`), `--version` or `--help`; `1`
-for invalid flags or configuration; and `2` when the broker cannot start (a port in use, for
-example). On a signal the controller stops within 2 seconds, even with a weather fetch in flight.
+for invalid flags or configuration; and `2` when a component cannot start (a port in use, for
+example) or a poisoned state lock forces shutdown. Fatal state errors stop scheduling and use the
+same bounded shutdown path as signals. On a signal the controller stops within 2 seconds, even
+with a weather fetch in flight.
 
 #### Test notification flags (debug only)
 
@@ -222,6 +224,9 @@ energy_saving:
 ### Theme
 
 Colors pushed to every connected device on day/night transitions (`#RRGGBB`).
+When sunrise or sunset is unavailable (polar night or midnight sun), Night remains active and
+the controller retries at each local midnight. Once sun events return, that day's sunrise is
+scheduled normally.
 
 ```yaml
 theme:
@@ -298,6 +303,16 @@ weather:
 
 An omitted threshold takes its default; any value given, `0` included, is used as is.
 
+Polling intervals, horizons, the notification repeat interval, stale-data TTL and the missing-poll
+count must be positive; `0` still selects the default. Negative values are configuration errors.
+Cached warnings replay to a newly ready device only while both the notification repeat interval
+and `data_stale_ttl_minutes` have not elapsed. The TTL measures the age of the fetch that produced
+the cached batch, not the age of a later poll that did not notify.
+
+For WMO 45 or 48, fog alerts use `fog_visibility_severe_m` and `fog_visibility_warn_m` when
+visibility is known, and a warning when it is missing. Other codes never raise a fog alert.
+Visibility equal to a threshold does not meet it.
+
 ## Migrating from 1.x
 
 Version 2.0 replaces the Go implementation with a Rust one. The configuration file, the MQTT
@@ -315,6 +330,10 @@ topics and the payload fields stay the same; these are the differences.
 | Q8 | Logging | slog text (`time=… level=INFO msg=…`) | tracing text by default; `log_format: json` or `--log-format json` for JSON |
 | Q9 | CLI | Go `flag` | clap; see below |
 | Q10 | Energy-saving window on daylight-saving days | the time since local midnight was added, so `07:00` fired at 08:00 on a spring-forward day and an hour early on a fall-back day | start and end are wall-clock times on every day (see below) |
+| Q11 | Weather interval validation | negative intervals, horizons and missing-poll counts were accepted | rejected as configuration errors; `0` still selects the default |
+| Q12 | Weather warning controls | stale-data TTL and fog warning visibility were parsed but unused | cached notification replays obey the TTL; WMO fog codes 45/48 use the configured visibility thresholds, or warn when visibility is missing; other codes never raise fog alerts |
+| Q13 | Polar fallback | midnight retries toggled day/night despite unavailable sun events | remains Night until sun events return, then resumes that day's schedule |
+| Q14 | Poisoned shared state | not applicable to Go's locks | Rust state-lock failures return typed errors and trigger bounded shutdown with exit code `2`; inconsistent state is never reused |
 
 **Q9, the command line.** The flags, their defaults and their environment variables are the same,
 plus `--log-format`. What changed:

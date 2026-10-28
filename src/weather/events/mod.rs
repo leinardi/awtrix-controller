@@ -237,7 +237,7 @@ fn frost_risk(index: usize, points: &[ForecastPoint], config: &WeatherConfig) ->
     let frost_possible = temperature <= config.frost_temp_c
         && temperature - dew_point <= config.frost_dew_point_delta_c;
     let window = SignedDuration::try_from_secs_f64(config.frost_warn_precip_window_h * 3600.0)
-        .unwrap_or(SignedDuration::ZERO);
+        .unwrap_or(SignedDuration::MAX);
     (frost_possible
         && has_precipitation_in_window(index, points, window, config.frost_warn_precip_mm))
     .then_some(Severity::Warning)
@@ -306,22 +306,19 @@ fn snow(point: &ForecastPoint) -> Option<Severity> {
     }
 }
 
-/// Fog codes; severe when the visibility is below the severe threshold, a warning otherwise,
-/// including when the visibility is unknown.
+/// Fog codes use the visibility thresholds; missing visibility still warrants a warning.
+/// Poor visibility under other weather codes is not evidence of fog.
 fn fog(point: &ForecastPoint, config: &WeatherConfig) -> Option<Severity> {
-    match point.weather_code? {
-        wmo::FOG_LIGHT | wmo::FOG_RIME => {
-            let severe = point
-                .visibility
-                .is_some_and(|visibility| visibility < config.fog_visibility_severe_m);
-            Some(if severe {
-                Severity::Severe
-            } else {
-                Severity::Warning
-            })
-        }
-        _ => None,
+    if !matches!(point.weather_code, Some(wmo::FOG_LIGHT | wmo::FOG_RIME)) {
+        return None;
     }
+    if let Some(visibility) = point.visibility {
+        if visibility < config.fog_visibility_severe_m {
+            return Some(Severity::Severe);
+        }
+        return (visibility < config.fog_visibility_warn_m).then_some(Severity::Warning);
+    }
+    Some(Severity::Warning)
 }
 
 const fn is_notify_enabled(event_type: EventType, config: &WeatherConfig) -> bool {

@@ -26,15 +26,16 @@
 //! the energy-saving brightness, and the weather overlay, pushed retained to
 //! `{client_id}/settings`.
 
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, RwLock};
 
 use tracing::debug;
 
-use crate::broker::{BrokerError, BrokerHandle};
+use crate::broker::{BrokerError, BrokerHandle, Retention};
 use crate::config::ThemeConfig;
 use crate::daynight::{Mode, ModeProvider};
 use crate::energysaving::EnergySaving;
 use crate::model::{OverlayEffect, Settings};
+use crate::state::{self, StateError};
 
 /// The brightness while energy saving is active.
 const ENERGY_SAVING_BRIGHTNESS: i64 = 1;
@@ -78,27 +79,29 @@ impl Builder {
 
     /// Sets the overlay of the next payloads; `None` clears it (the payload then carries
     /// `"OVERLAY": null`).
-    pub fn set_overlay(&self, overlay: Option<OverlayEffect>) {
-        *self.overlay.write().unwrap_or_else(PoisonError::into_inner) = overlay;
+    ///
+    /// # Errors
+    /// The overlay lock is poisoned.
+    pub fn set_overlay(&self, overlay: Option<OverlayEffect>) -> Result<(), StateError> {
+        *state::checked(self.overlay.write(), "settings overlay")? = overlay;
+        Ok(())
     }
 
     /// The payload: the theme's calendar accent as `CHCOL` and `WDCA`, its content colour as
     /// `CBCOL`, `WDCI`, `TIME_COL` and `DATE_COL`, the overlay, and `BRI` 1 with `ABRI` false
     /// while energy saving is active, `ABRI` true otherwise.
-    #[must_use]
-    pub fn build(&self) -> Settings {
+    ///
+    /// # Errors
+    /// The overlay lock is poisoned.
+    pub fn build(&self) -> Result<Settings, StateError> {
         let colors = match self.mode.current_mode() {
             Mode::Day => &self.theme.day,
             Mode::Night => &self.theme.night,
         };
-        let overlay = self
-            .overlay
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
+        let overlay = state::checked(self.overlay.read(), "settings overlay")?.clone();
         let energy_saving = self.energy_saving.is_active();
 
-        Settings {
+        Ok(Settings {
             ch_col: colors.calendar_accent.clone(),
             cb_col: colors.content.clone(),
             wdca: colors.calendar_accent.clone(),
@@ -109,7 +112,7 @@ impl Builder {
             bri: energy_saving.then_some(ENERGY_SAVING_BRIGHTNESS),
             abri: Some(!energy_saving),
             ..Settings::default()
-        }
+        })
     }
 }
 
@@ -142,7 +145,7 @@ pub async fn push(
         "settings: pushing to client"
     );
     broker
-        .publish(&topic, payload, true)
+        .publish(&topic, payload, Retention::Retained)
         .await
         .map_err(|source| PushError::Publish { topic, source })
 }

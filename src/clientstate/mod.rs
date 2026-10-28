@@ -26,11 +26,12 @@
 //! show.
 
 use std::collections::HashMap;
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, RwLock};
 
 use tracing::warn;
 
 use crate::model::Stats;
+use crate::state::{self, StateError};
 
 /// The last known state of one connected device.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -56,57 +57,88 @@ impl Registry {
     }
 
     /// Adds `client_id` with an empty state, replacing any state it had.
-    pub fn register(&self, client_id: &str) {
-        self.write()
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn register(&self, client_id: &str) -> Result<(), StateError> {
+        self.write()?
             .insert(client_id.to_owned(), ClientState::default());
+        Ok(())
     }
 
     /// Removes `client_id`; nothing happens when it is not registered.
-    pub fn unregister(&self, client_id: &str) {
-        self.write().remove(client_id);
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn unregister(&self, client_id: &str) -> Result<(), StateError> {
+        self.write()?.remove(client_id);
+        Ok(())
     }
 
     /// Stores the stats of `client_id`, or logs a warning when it is not registered.
-    pub fn update_stats(&self, client_id: &str, stats: Stats) {
-        if let Some(state) = self.write().get_mut(client_id) {
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn update_stats(&self, client_id: &str, stats: Stats) -> Result<(), StateError> {
+        let updated = if let Some(state) = self.write()?.get_mut(client_id) {
             state.stats = Some(Arc::new(stats));
+            true
         } else {
+            false
+        };
+        if !updated {
             warn!(
                 client_id,
                 "clientstate: update_stats for a client that is not registered"
             );
         }
+        Ok(())
     }
 
     /// Stores the current app of `client_id`; nothing happens when it is not registered.
-    pub fn update_current_app(&self, client_id: &str, app: &str) {
-        if let Some(state) = self.write().get_mut(client_id) {
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn update_current_app(&self, client_id: &str, app: &str) -> Result<(), StateError> {
+        if let Some(state) = self.write()?.get_mut(client_id) {
             app.clone_into(&mut state.current_app);
         }
+        Ok(())
     }
 
     /// The registered client IDs, sorted.
-    #[must_use]
-    pub fn connected_ids(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self.read().keys().cloned().collect();
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn connected_ids(&self) -> Result<Vec<String>, StateError> {
+        let mut ids: Vec<String> = self.read()?.keys().cloned().collect();
         ids.sort();
-        ids
+        Ok(ids)
     }
 
     /// A copy of the state of `client_id`, or `None` when it is not registered.
-    #[must_use]
-    pub fn snapshot(&self, client_id: &str) -> Option<ClientState> {
-        self.read().get(client_id).cloned()
+    ///
+    /// # Errors
+    /// The registry lock is poisoned.
+    pub fn snapshot(&self, client_id: &str) -> Result<Option<ClientState>, StateError> {
+        Ok(self.read()?.get(client_id).cloned())
     }
 
-    fn read(&self) -> std::sync::RwLockReadGuard<'_, HashMap<String, ClientState>> {
-        self.clients.read().unwrap_or_else(PoisonError::into_inner)
+    fn read(
+        &self,
+    ) -> Result<std::sync::RwLockReadGuard<'_, HashMap<String, ClientState>>, StateError> {
+        state::checked(self.clients.read(), "client registry")
     }
 
-    fn write(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, ClientState>> {
-        self.clients.write().unwrap_or_else(PoisonError::into_inner)
+    fn write(
+        &self,
+    ) -> Result<std::sync::RwLockWriteGuard<'_, HashMap<String, ClientState>>, StateError> {
+        state::checked(self.clients.write(), "client registry")
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) use tests::poison;

@@ -349,25 +349,59 @@ impl TestNotificationArgs {
 /// command line could otherwise start with a mangled path or a silently ignored level.
 #[must_use]
 pub fn single_dash_long_form(args: &[OsString]) -> Option<(String, String)> {
-    let command = Cli::command();
+    let mut command = Cli::command();
+    command.build();
     let long_names: Vec<&str> = command
         .get_arguments()
         .filter_map(clap::Arg::get_long)
         .chain(["help"])
         .collect();
-    args.iter()
-        .take_while(|arg| *arg != "--")
-        .filter_map(|arg| arg.to_str())
-        .find_map(|arg| {
-            let name = arg.strip_prefix('-')?;
-            if name.starts_with('-') {
-                return None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            break;
+        }
+        let Some(arg) = arg.to_str() else { continue };
+        if let Some(long) = arg.strip_prefix("--") {
+            if !long.contains('=')
+                && command
+                    .get_arguments()
+                    .any(|option| option.get_long() == Some(long) && takes_separate_value(option))
+            {
+                args.next();
             }
-            let name = name.split_once('=').map_or(name, |(name, _)| name);
-            long_names
-                .contains(&name)
-                .then(|| (arg.to_owned(), format!("--{name}")))
-        })
+            continue;
+        }
+        let Some(short) = arg.strip_prefix('-') else {
+            continue;
+        };
+        let name = short.split_once('=').map_or(short, |(name, _)| name);
+        if long_names.contains(&name) {
+            return Some((arg.to_owned(), format!("--{name}")));
+        }
+        // A value-taking short option ends its cluster: its value is the remaining suffix or
+        // the next token. Neither is another option, even when it starts with a dash.
+        for (index, character) in short.char_indices() {
+            let option = command
+                .get_arguments()
+                .find(|option| option.get_short() == Some(character));
+            let Some(option) = option else { break };
+            if takes_separate_value(option) {
+                if index + character.len_utf8() == short.len() {
+                    args.next();
+                }
+                break;
+            }
+        }
+    }
+    None
+}
+
+fn takes_separate_value(option: &clap::Arg) -> bool {
+    !option.is_require_equals_set()
+        && option
+            .get_num_args()
+            .is_some_and(|arity| arity.min_values() > 0)
 }
 
 /// `"true"` and `"false"`, exactly; anything else, the empty string included, leaves the field

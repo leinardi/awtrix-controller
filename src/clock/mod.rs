@@ -29,8 +29,6 @@
 //! This module is the only one allowed to read the wall clock (`clippy.toml` bans
 //! `Timestamp::now` and its kin everywhere else).
 
-use std::sync::{Arc, Mutex, PoisonError};
-
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan};
@@ -83,38 +81,8 @@ impl Clock for TokioClock {
     }
 }
 
-/// A clock the caller sets and advances by hand. Safe to share between threads.
-#[derive(Clone, Debug)]
-pub struct FakeClock {
-    now: Arc<Mutex<Timestamp>>,
-}
-
-impl FakeClock {
-    /// A clock reading `now`.
-    #[must_use]
-    pub fn new(now: Timestamp) -> Self {
-        Self {
-            now: Arc::new(Mutex::new(now)),
-        }
-    }
-
-    /// Sets the current instant.
-    pub fn set(&self, now: Timestamp) {
-        *self.now.lock().unwrap_or_else(PoisonError::into_inner) = now;
-    }
-
-    /// Moves the clock by `duration` (backwards when negative).
-    pub fn advance(&self, duration: SignedDuration) {
-        let mut now = self.now.lock().unwrap_or_else(PoisonError::into_inner);
-        *now = now.saturating_add(duration).unwrap_or(*now);
-    }
-}
-
-impl Clock for FakeClock {
-    fn now(&self) -> Timestamp {
-        *self.now.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
+#[cfg(test)]
+pub(crate) use tests::FakeClock;
 
 /// Converts a local date and wall-clock time in `zone` to an instant. Every such conversion goes
 /// through here, so the daylight-saving policy is decided once:
@@ -149,12 +117,42 @@ pub fn next_local_midnight(instant: Timestamp, zone: &TimeZone) -> Timestamp {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
 
     use jiff::civil::{date, time};
 
     use super::*;
+
+    /// A manually driven test clock; poisoning a fixture is a test failure.
+    #[derive(Clone, Debug)]
+    pub(crate) struct FakeClock {
+        now: Arc<Mutex<Timestamp>>,
+    }
+
+    impl FakeClock {
+        pub(crate) fn new(now: Timestamp) -> Self {
+            Self {
+                now: Arc::new(Mutex::new(now)),
+            }
+        }
+
+        pub(crate) fn set(&self, now: Timestamp) {
+            *self.now.lock().expect("test clock poisoned") = now;
+        }
+
+        pub(crate) fn advance(&self, duration: SignedDuration) {
+            let mut now = self.now.lock().expect("test clock poisoned");
+            *now = now.saturating_add(duration).unwrap_or(*now);
+        }
+    }
+
+    impl Clock for FakeClock {
+        fn now(&self) -> Timestamp {
+            *self.now.lock().expect("test clock poisoned")
+        }
+    }
 
     fn instant(text: &str) -> Timestamp {
         text.parse().expect("timestamp")
