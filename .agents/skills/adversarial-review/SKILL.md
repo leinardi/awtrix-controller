@@ -3,7 +3,7 @@ name: adversarial-review
 description: >
   Adversarial code review of changes to awtrix-controller — working tree, staged
   diff, a branch vs main, a commit range, or a PR — in any language (Rust, bash,
-  Dockerfile, Makefile, YAML, docs). Loads rust-style-guide for Rust paths, hunts for
+  Dockerfile, Makefile, YAML, docs). Uses user-level Rust skills for Rust paths, hunts for
   real defects and violations of the controller's invariants (MQTT broker auth and
   hooks, client state across reconnects, scheduling and timezones, config
   validation, the settings and notifications pushed to devices), then reports
@@ -25,7 +25,7 @@ Copy this checklist and tick items as you go:
 ```text
 Review progress:
 - [ ] 1. Scope chosen; diff, stated intent and every changed file read in full
-- [ ] 2. `rust-style-guide` loaded for the Rust paths
+- [ ] 2. User-level Rust skills and AGENTS.md consulted for the Rust paths
 - [ ] 3. Repo invariants checked
 - [ ] 4. Adversarial passes run; every candidate confirmed or dropped
 - [ ] 5. Always-on passes (a)–(e) run
@@ -68,7 +68,7 @@ assumed from the diff: a signature or behavior change is only safe if every call
 ## 2. Load the domain skill
 
 For any `**/*.rs` path (and `Cargo.toml`, `clippy.toml`, `rustfmt.toml`), load
-`rust-style-guide` before judging it; its rules (the maintainer's rules included) are findings
+user-level Rust skills and read `AGENTS.md` before judging it; project rules are findings
 even when clippy is green. Every other path (Dockerfile, compose,
 `Makefile`, `.mk/*.mk`, workflows, other YAML, bash, Markdown) gets the passes in §4 plus the
 invariants in §3 with the **same rigor** — an unmatched language is not a lighter review.
@@ -273,10 +273,10 @@ anywhere (the workspace lints deny it in Rust code). The same holds for a lint r
 ### (d) Cross-file duplication
 
 Before accepting a new helper, search `src/**`, `tests/**` and `meta/src/**` for the one that
-already exists, by *behavior*. The *Reuse before writing* table in `rust-style-guide` lists them
-(the clock and `resolve_local`, the scheduler, the next-occurrence helpers, the energy-saving
+already exists, by *behavior*. Check the clock and `resolve_local`, the scheduler,
+the next-occurrence helpers, the energy-saving
 window, the registry, settings builder and push, the notification publisher, the log capture,
-and the broker and run test harnesses).
+and the broker and run test harnesses.
 
 ### (e) Docs drift
 
