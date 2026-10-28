@@ -16,7 +16,8 @@ make rust-build    # cargo build --workspace --all-targets --locked
 make rust-test     # cargo test --workspace --locked (the meta-tests in meta/ included)
 make rust-fmt      # cargo fmt --all; rust-fmt-check only checks
 make rust-clippy   # cargo clippy --workspace --all-targets --locked -- -D warnings
-make verify        # verify-rust: rust-build, rust-fmt-check, rust-clippy and rust-test
+make verify        # verify-rust: rust-build, rust-fmt-check, rust-clippy, rust-test and rust-doc
+make rust-doc      # cargo doc --workspace --all-features --no-deps --locked, warnings as errors
 make rust-run ARGS="--config config.yaml"   # run with AWTRIX_CONTROLLER_VERSION/_COMMIT/_DATE set from git
 make rust-deny     # cargo deny check: advisories, licences, bans, sources (network required)
 make audit-deps    # cargo deny check advisories (network required); cargo-deny also runs in CI and as a pre-commit hook on Cargo.toml/Cargo.lock/deny.toml changes
