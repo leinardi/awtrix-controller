@@ -1,6 +1,6 @@
-# Conventions (beyond AGENTS.md and the rust-style-guide skill)
+# Conventions (beyond AGENTS.md and user-level Rust skills)
 
-Full rules: `.agents/skills/rust-style-guide/SKILL.md` (load before any .rs edit). Lint traps that
+Project rules: `AGENTS.md`; general guidance: user-level Rust skills. Lint traps that
 repeatedly bite:
 
 - `min_ident_chars`: no single-letter names, closures included (only `x`, `y` allowed).
