@@ -31,10 +31,10 @@ MK_COMMON_VERSION     ?= v1
 MK_COMMON_DIR         := $(REPO_ROOT)/.mk
 
 # Shared snippets coming from make-common
-MK_COMMON_FILES       := docker.mk help.mk password.mk pre-commit.mk
+MK_COMMON_FILES       := docker.mk help.mk password.mk pre-commit.mk rust.mk
 
 # Repo-local snippets that are NOT in make-common
-MK_LOCAL_FILES        := docker-run.mk audit-deps.mk verify.mk rust.mk
+MK_LOCAL_FILES        := docker-run.mk audit-deps.mk verify.mk
 
 MK_COMMON_BOOTSTRAP_SCRIPT := $(REPO_ROOT)/scripts/bootstrap-mk-common.sh
 
@@ -49,6 +49,12 @@ MK_COMMON_BOOTSTRAP := $(shell "$(MK_COMMON_BOOTSTRAP_SCRIPT)" \
 # Project-specific config
 # -----------------------------------------------------------------------------
 BIN_NAME     ?= awtrix-controller
+
+# Rust settings for make-common's rust.mk. src/version.rs reads the AWTRIX_CONTROLLER_VERSION,
+# _COMMIT and _DATE stamps. The default features are all of them: no member defines a [features]
+# table. cargo-deny keeps the root package's graph (no --workspace), as before the move upstream.
+RUST_STAMP_PREFIX := AWTRIX_CONTROLLER
+RUST_DENY_ARGS    :=
 
 # Docker build settings
 DOCKERFILE     ?= deployments/docker/Dockerfile

@@ -58,7 +58,7 @@ cargo build --release --locked   # ./target/release/awtrix-controller, for the h
 
 The version strings that `--version` prints come from the environment at build time:
 `AWTRIX_CONTROLLER_VERSION`, `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`dev`, `none`
-and `unknown` when unset). `make rust-run` sets all three from git.
+and `unknown` when unset). `make rust-build` and `make rust-run` set all three from git.
 
 A static musl binary, as the releases ship it, needs [zig](https://ziglang.org/) and
 cargo-zigbuild, plus the target's standard library (`rustup target add x86_64-unknown-linux-musl`):

@@ -23,8 +23,8 @@
  */
 
 //! The build's version strings, set at compile time through `AWTRIX_CONTROLLER_VERSION`,
-//! `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`make rust-run` and the image build
-//! pass them), and logged once at startup.
+//! `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`make rust-build`, `make rust-run`
+//! and the image build pass them), and logged once at startup.
 
 /// The release version, `dev` for a local build.
 pub const VERSION: &str = match option_env!("AWTRIX_CONTROLLER_VERSION") {
