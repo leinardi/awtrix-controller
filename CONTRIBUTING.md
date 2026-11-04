@@ -24,7 +24,7 @@
 ## Building and testing
 
 ```bash
-make rust-build      # cargo build of the whole workspace, every target
+make rust-build      # cargo build of the whole workspace, every target, version strings set
 make rust-test       # cargo test --workspace, the meta-tests in meta/ included
 make rust-fmt        # format the code (rust-fmt-check only checks)
 make rust-clippy     # clippy over the workspace, warnings as errors

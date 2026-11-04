@@ -26,7 +26,7 @@ ifndef MK_LOCAL_VERIFY_INCLUDED
 MK_LOCAL_VERIFY_INCLUDED := 1
 
 # Local snippet (NOT part of make-common): one command that runs every check a change has to pass,
-# for fast agent and developer feedback. verify-rust lives in rust.mk.
+# for fast agent and developer feedback. verify-rust lives in make-common's rust.mk.
 
 .PHONY: verify
 verify: verify-rust ## Verify everything

@@ -12,13 +12,14 @@ configuration keys, CLI flags and behaviour.
 ## Common commands
 
 ```bash
-make rust-build    # cargo build --workspace --all-targets --locked
+make rust-build    # cargo build --workspace --all-targets --all-features --locked, stamped
 make rust-test     # cargo test --workspace --locked (the meta-tests in meta/ included)
 make rust-fmt      # cargo fmt --all; rust-fmt-check only checks
-make rust-clippy   # cargo clippy --workspace --all-targets --locked -- -D warnings
+make rust-clippy   # cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 make verify        # verify-rust: rust-build, rust-fmt-check, rust-clippy, rust-test and rust-doc
 make rust-doc      # cargo doc --workspace --all-features --no-deps --locked, warnings as errors
 make rust-run ARGS="--config config.yaml"   # run with AWTRIX_CONTROLLER_VERSION/_COMMIT/_DATE set from git
+make rust-dist     # stamped release binary in dist/awtrix-controller
 make rust-deny     # cargo deny check: advisories, licences, bans, sources (network required)
 make audit-deps    # cargo deny check advisories (network required); cargo-deny also runs in CI and as a pre-commit hook on Cargo.toml/Cargo.lock/deny.toml changes
 make check         # pre-commit on all files: rustfmt, clippy, tests, linters
@@ -38,10 +39,11 @@ cargo test --locked -p awtrix-controller --test broker
 cargo test --locked -p meta --test docs
 ```
 
-The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run. To
+The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run,
+`rust.mk` among them, configured by the Makefile's `RUST_STAMP_PREFIX` and `RUST_DENY_ARGS`. To
 refresh: `make mk-common-update`. Project targets live in the local `.mk/*.mk` files listed in
-`MK_LOCAL_FILES` (`rust.mk`, `verify.mk`, `audit-deps.mk`, `docker-run.mk`), never as recipes in
-the Makefile.
+`MK_LOCAL_FILES` (`verify.mk`, `audit-deps.mk`, `docker-run.mk`), never as recipes in the
+Makefile.
 
 ## Layout
 
@@ -93,7 +95,7 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 
 ### Generated or vendored: never hand-edit
 
-- `.mk/{docker,help,password,pre-commit}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
+- `.mk/{docker,help,password,pre-commit,rust}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
   make-common; refresh them with `make mk-common-update`, and port a change upstream.
 - `.suppressions-baseline`: written by `scripts/check-suppressions.sh --update`.
 - `Cargo.lock`: written by cargo; change it with `cargo update -p <crate>`, never by hand.
@@ -154,8 +156,9 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   other module calls jiff's disambiguation directly.
 - **Version strings:** `src/version.rs` reads `AWTRIX_CONTROLLER_VERSION`,
   `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` at compile time (`option_env!`), falling
-  back to `dev`, `none` and `unknown`. `make rust-run` sets them from git (`RUST_VERSION_ENV` in
-  `.mk/rust.mk`), and the Dockerfile and the release workflow from the release version.
+  back to `dev`, `none` and `unknown`. `make rust-build`, `make rust-dist` and `make rust-run` set
+  them from git (`RUST_STAMP_PREFIX` in the Makefile, for make-common's `.mk/rust.mk`), and the
+  Dockerfile and the release workflow from the release version.
 - Every Rust and shell file, the Dockerfile, the Makefile and the repo-local `.mk` fragments carry
   the MIT license header, with the year of the file's first commit (copy it from any Rust or shell
   file, or use the IntelliJ MIT copyright profile). The `check-license-headers` pre-commit hook

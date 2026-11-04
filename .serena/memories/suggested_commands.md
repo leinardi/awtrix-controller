@@ -10,7 +10,8 @@
   (missing droast or shellcheck becomes a failure instead of a skip).
 - `make check` (pre-commit, all files) / `make check-stage` (staged only).
 - `make audit-deps` (cargo deny advisories, network), `make rust-deny` (all cargo-deny checks).
-- `make rust-run ARGS="--config config.yaml"` (version env vars from git).
+- `make rust-run ARGS="--config config.yaml"` (version env vars from git; `rust-build` sets them
+  too). The Rust targets come from make-common's `.mk/rust.mk`.
 - `make docker-build` / `make docker-run` (dhi.io login required).
 - Suppression baseline refresh: `scripts/check-suppressions.sh --update` (commit the baseline with
   the suppression).

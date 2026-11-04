@@ -277,7 +277,7 @@ fn header_cases_for_each_file_kind() {
             false,
         ),
         case(
-            "rust make fragment, no header",
+            "make fragment the Makefile does not fetch, no header",
             &[(".mk/rust.mk", "x:\n")],
             false,
         ),
@@ -302,6 +302,17 @@ fn header_cases_for_the_exemptions() {
         case(
             "upstream make fragment",
             &[(".mk/docker.mk", "x:\n"), (".mk/help.mk", "y:\n")],
+            true,
+        ),
+        case(
+            "upstream rust make fragment",
+            &[
+                (
+                    "Makefile",
+                    &(hash_header() + "\nMK_COMMON_FILES := docker.mk help.mk rust.mk\n"),
+                ),
+                (".mk/rust.mk", "x:\n"),
+            ],
             true,
         ),
         case(
