@@ -28,10 +28,11 @@ use jiff::civil::{date, time};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::testing::Capture;
 
 use super::*;
 use crate::clock::TokioClock;
-use crate::test_support::Captured;
+use crate::test_support;
 
 fn instant(text: &str) -> Timestamp {
     text.parse().expect("timestamp")
@@ -280,8 +281,8 @@ async fn weekly_single_weekday() {
 /// A device that cannot be reached is logged and skipped; the others still get the notification.
 #[tokio::test(start_paused = true)]
 async fn publish_failure_is_logged_and_skipped() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let now = instant("2024-12-31T23:59:59Z");
     let (scheduler, mut published) = started(
@@ -506,8 +507,8 @@ fn recurring_occurrences_across_transitions() {
 /// Entries the configuration would have rejected are skipped, not scheduled.
 #[tokio::test(start_paused = true)]
 async fn invalid_entries_are_skipped() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let bad_time = ScheduledNotificationConfig {
         time: "25:00".to_owned(),

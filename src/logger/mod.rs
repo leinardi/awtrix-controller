@@ -24,12 +24,14 @@
 
 //! The application's logging: one global `tracing` subscriber writing to standard output, as
 //! tracing-subscriber's text or JSON (Q8), at a level resolved as the Go implementation resolved
-//! it. Crates that log through the `log` facade are bridged in.
+//! it. The subscriber is rust-common's `tracing-setup`, with the target and the JSON span fields
+//! shown; crates that log through the `log` facade are bridged in.
 
 use std::io;
 
-use tracing::Subscriber;
+use tracing::Dispatch;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::{InstallError, Options};
 use tracing_subscriber::fmt::MakeWriter;
 
 use crate::config::LogFormat;
@@ -42,35 +44,27 @@ const DEFAULT_LEVEL: &str = "info";
 /// # Errors
 ///
 /// A global subscriber or `log` logger is already installed.
-pub fn init(level: LevelFilter, format: LogFormat) -> Result<(), InitError> {
-    tracing_log::LogTracer::init().map_err(|_| InitError)?;
-    tracing::subscriber::set_global_default(subscriber(level, format, io::stdout))
-        .map_err(|_| InitError)
+pub fn init(level: LevelFilter, format: LogFormat) -> Result<(), InstallError> {
+    tracing_setup::install_log_bridge()?;
+    tracing_setup::install_global(subscriber(level, format, io::stdout))
 }
 
-/// A global logger was already installed.
-#[derive(Clone, Copy, Debug, thiserror::Error)]
-#[error("a global logger is already installed")]
-pub struct InitError;
-
-/// The subscriber [`init`] installs, writing to `writer`; tests install it in a scope.
-pub fn subscriber<W>(
-    level: LevelFilter,
-    format: LogFormat,
-    writer: W,
-) -> Box<dyn Subscriber + Send + Sync>
+/// The subscriber [`init`] installs, writing to `writer`: rust-common's, with the target and the
+/// JSON span fields shown. Tests install it in a scope.
+pub fn subscriber<W>(level: LevelFilter, format: LogFormat, writer: W) -> Dispatch
 where
     W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
 {
-    let builder = tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_ansi(false)
-        .with_writer(writer);
-
-    match format {
-        LogFormat::Text => Box::new(builder.finish()),
-        LogFormat::Json => Box::new(builder.json().flatten_event(true).finish()),
-    }
+    let format = match format {
+        LogFormat::Text => tracing_setup::Format::Text,
+        LogFormat::Json => tracing_setup::Format::Json,
+    };
+    tracing_setup::build(
+        writer,
+        format,
+        level,
+        Options::new().target(true).span_fields(true),
+    )
 }
 
 /// The level to log at, with Go's priority: an explicitly given `--log-level` flag wins, then a
@@ -144,11 +138,11 @@ mod tests {
     use tracing::{debug, info};
 
     use super::*;
-    use crate::test_support::Captured;
+    use tracing_setup::testing::Capture;
 
     fn capture(level: LevelFilter, format: LogFormat, emit: impl FnOnce()) -> String {
-        let captured = Captured::default();
-        tracing::subscriber::with_default(subscriber(level, format, captured.clone()), emit);
+        let captured = Capture::default();
+        tracing::dispatcher::with_default(&subscriber(level, format, captured.clone()), emit);
         captured.text()
     }
 
@@ -208,7 +202,7 @@ mod tests {
     #[test]
     fn log_facade_is_bridged() {
         // Installing the bridge twice fails harmlessly; another test may have done it.
-        let _ = tracing_log::LogTracer::init();
+        let _ = tracing_setup::install_log_bridge();
         let output = capture(LevelFilter::INFO, LogFormat::Text, || {
             log::info!("from the log facade");
         });

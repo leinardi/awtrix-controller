@@ -30,10 +30,11 @@ use jiff::civil::{date, time};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::testing::Capture;
 
 use super::*;
 use crate::clock::TokioClock;
-use crate::test_support::Captured;
+use crate::test_support;
 
 fn instant(text: &str) -> Timestamp {
     text.parse().expect("timestamp")
@@ -428,8 +429,8 @@ fn empty_window_on_spring_forward_day() {
             now += SignedDuration::from_mins(1);
         }
 
-        let captured = Captured::default();
-        let _guard = captured.install(LevelFilter::INFO);
+        let captured = Capture::default();
+        let _guard = test_support::install(&captured, LevelFilter::INFO);
         let _ = window.next_transition(midnight - SignedDuration::from_hours(1));
         let log = captured.text();
         assert!(log.contains("empties the window"), "{log}");

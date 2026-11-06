@@ -29,10 +29,11 @@ use jiff::civil::{date, time};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::testing::Capture;
 
 use super::*;
 use crate::clock::{TokioClock, resolve_local};
-use crate::test_support::Captured;
+use crate::test_support;
 
 fn instant(text: &str) -> Timestamp {
     text.parse().expect("timestamp")
@@ -146,8 +147,8 @@ async fn day_to_night_transition() {
 /// warning is logged, and retries at local midnight never manufacture daylight.
 #[tokio::test(start_paused = true)]
 async fn polar_night_falls_back_to_night_and_retries_at_midnight() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let now = instant("2024-01-15T14:00:00Z");
     let (controller, scheduler, mut changes) =

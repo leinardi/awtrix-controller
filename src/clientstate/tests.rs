@@ -25,9 +25,10 @@
 use std::thread;
 
 use tracing::level_filters::LevelFilter;
+use tracing_setup::testing::Capture;
 
 use super::*;
-use crate::test_support::Captured;
+use crate::test_support;
 
 fn stats(app: &str, bat: i64) -> Stats {
     Stats {
@@ -86,8 +87,8 @@ fn unregister_removes_the_client() {
 /// checked too.
 #[test]
 fn stats_for_an_unknown_client_are_dropped_with_a_warning() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
     let registry = Registry::new();
     registry
         .update_stats("ghost", Stats::default())
