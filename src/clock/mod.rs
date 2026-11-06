@@ -26,63 +26,18 @@
 //! reading the wall clock, and the one conversion from a local date and wall-clock time to an
 //! instant.
 //!
-//! This module is the only one allowed to read the wall clock (`clippy.toml` bans
-//! `Timestamp::now` and its kin everywhere else).
+//! The clock itself ([`Clock`], [`SystemClock`], [`TokioClock`] and the tests' `FakeClock`) is
+//! rust-common's `go-clock`, re-exported here so the call sites name `crate::clock`. Only
+//! `go-clock`'s `SystemClock` and the debug weather simulation read the wall clock (`clippy.toml`
+//! bans `Timestamp::now` and its kin in this crate).
 
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Timestamp, ToSpan};
-
-/// A source of the current time.
-pub trait Clock: Send + Sync {
-    /// The current instant.
-    fn now(&self) -> Timestamp;
-}
-
-/// The wall clock.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the production clock is the one place that reads the wall clock"
-    )]
-    fn now(&self) -> Timestamp {
-        Timestamp::now()
-    }
-}
-
-/// A clock that follows tokio's time: a base instant plus the time tokio says has elapsed since
-/// the clock was made. Under a paused runtime (`start_paused`) wall time and timers then move
-/// together, which `Timestamp::now` would not.
-#[derive(Clone, Copy, Debug)]
-pub struct TokioClock {
-    base: Timestamp,
-    started: tokio::time::Instant,
-}
-
-impl TokioClock {
-    /// A clock that reads `base` now and moves with tokio's time from here on.
-    #[must_use]
-    pub fn new(base: Timestamp) -> Self {
-        Self {
-            base,
-            started: tokio::time::Instant::now(),
-        }
-    }
-}
-
-impl Clock for TokioClock {
-    fn now(&self) -> Timestamp {
-        let elapsed = tokio::time::Instant::now().duration_since(self.started);
-        let elapsed = SignedDuration::try_from(elapsed).unwrap_or(SignedDuration::MAX);
-        self.base.saturating_add(elapsed).unwrap_or(Timestamp::MAX)
-    }
-}
+use jiff::{Timestamp, ToSpan};
 
 #[cfg(test)]
-pub(crate) use tests::FakeClock;
+pub(crate) use go_clock::FakeClock;
+pub use go_clock::{Clock, SystemClock, TokioClock};
 
 /// Converts a local date and wall-clock time in `zone` to an instant. Every such conversion goes
 /// through here, so the daylight-saving policy is decided once:
@@ -117,42 +72,9 @@ pub fn next_local_midnight(instant: Timestamp, zone: &TimeZone) -> Timestamp {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-    use std::thread;
-    use std::time::Duration;
-
     use jiff::civil::{date, time};
 
     use super::*;
-
-    /// A manually driven test clock; poisoning a fixture is a test failure.
-    #[derive(Clone, Debug)]
-    pub(crate) struct FakeClock {
-        now: Arc<Mutex<Timestamp>>,
-    }
-
-    impl FakeClock {
-        pub(crate) fn new(now: Timestamp) -> Self {
-            Self {
-                now: Arc::new(Mutex::new(now)),
-            }
-        }
-
-        pub(crate) fn set(&self, now: Timestamp) {
-            *self.now.lock().expect("test clock poisoned") = now;
-        }
-
-        pub(crate) fn advance(&self, duration: SignedDuration) {
-            let mut now = self.now.lock().expect("test clock poisoned");
-            *now = now.saturating_add(duration).unwrap_or(*now);
-        }
-    }
-
-    impl Clock for FakeClock {
-        fn now(&self) -> Timestamp {
-            *self.now.lock().expect("test clock poisoned")
-        }
-    }
 
     fn instant(text: &str) -> Timestamp {
         text.parse().expect("timestamp")
@@ -160,92 +82,6 @@ mod tests {
 
     fn zone(name: &str) -> TimeZone {
         crate::config::load_time_zone(name).expect("zone")
-    }
-
-    /// Go: `TestRealClockNowIsRecent`
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "checking the production clock against the wall clock"
-    )]
-    fn system_clock_now_is_recent() {
-        let before = Timestamp::now();
-        let now = SystemClock.now();
-        let after = Timestamp::now();
-        let tolerance = SignedDuration::from_secs(1);
-        assert!(now >= before - tolerance && now <= after + tolerance);
-    }
-
-    /// Go: `TestFakeClockNowReturnsSetValue`
-    #[test]
-    fn fake_clock_now_returns_set_value() {
-        let fixed = instant("2024-06-15T12:00:00Z");
-        let clock = FakeClock::new(fixed);
-        assert_eq!(clock.now(), fixed);
-
-        let later = fixed + SignedDuration::from_hours(1);
-        clock.set(later);
-        assert_eq!(clock.now(), later);
-    }
-
-    /// Go: `TestFakeClockAdvance`
-    #[test]
-    fn fake_clock_advance() {
-        let start = instant("2024-01-01T00:00:00Z");
-        let clock = FakeClock::new(start);
-        clock.advance(SignedDuration::from_mins(30));
-        assert_eq!(clock.now(), start + SignedDuration::from_mins(30));
-    }
-
-    /// Go: `TestFakeClockConcurrentSafety`
-    #[test]
-    fn fake_clock_concurrent_safety() {
-        const THREADS: usize = 10;
-        const ITERATIONS: i64 = 100;
-
-        let start = instant("2024-01-01T00:00:00Z");
-        let clock = FakeClock::new(start);
-        let mut handles = Vec::new();
-        for _ in 0..THREADS {
-            let writer = clock.clone();
-            handles.push(thread::spawn(move || {
-                for _ in 0..ITERATIONS {
-                    writer.advance(SignedDuration::from_millis(1));
-                }
-            }));
-            let reader = clock.clone();
-            handles.push(thread::spawn(move || {
-                for _ in 0..ITERATIONS {
-                    let _ = reader.now();
-                }
-            }));
-        }
-        for handle in handles {
-            handle.join().expect("thread");
-        }
-
-        let threads = i64::try_from(THREADS).expect("small");
-        assert_eq!(
-            clock.now(),
-            start + SignedDuration::from_millis(threads * ITERATIONS)
-        );
-    }
-
-    /// The test clock moves with tokio's paused time, so a timer and the wall time agree.
-    #[tokio::test(start_paused = true)]
-    async fn tokio_clock_follows_paused_time() {
-        let base = instant("2026-03-29T00:00:00Z");
-        let clock = TokioClock::new(base);
-        assert_eq!(clock.now(), base);
-
-        tokio::time::sleep(Duration::from_mins(90)).await;
-        assert_eq!(clock.now(), base + SignedDuration::from_mins(90));
-
-        tokio::time::advance(Duration::from_millis(250)).await;
-        assert_eq!(
-            clock.now(),
-            base + SignedDuration::from_mins(90) + SignedDuration::from_millis(250)
-        );
     }
 
     /// Berlin's spring-forward day (2026-03-29, 02:00 → 03:00 CET → CEST): a time in the gap

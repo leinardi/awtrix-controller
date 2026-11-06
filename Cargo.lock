@@ -199,6 +199,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures",
+ "go-clock",
  "jiff",
  "log",
  "rmqtt",
@@ -978,6 +979,15 @@ dependencies = [
  "r-efi 6.0.0",
  "rand_core 0.10.1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "go-clock"
+version = "0.1.0"
+source = "git+https://github.com/leinardi/rust-common?rev=84186a1b24af2dfbff24455d0027cb7c23976f27#84186a1b24af2dfbff24455d0027cb7c23976f27"
+dependencies = [
+ "jiff",
+ "tokio",
 ]
 
 [[package]]

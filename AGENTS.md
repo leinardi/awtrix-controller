@@ -148,8 +148,9 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 
 - **Clock discipline:** `clippy.toml`'s `disallowed-methods` bans `jiff::Timestamp::now`,
   `jiff::Zoned::now`, `std::time::SystemTime::now` and `std::time::Instant::now`. Scheduling and
-  window code reads the time from the injected `src/clock` clock, so the tests can drive it; only
-  `src/clock` and the debug weather simulation read the wall clock, each through an
+  window code reads the time from the injected `src/clock` clock (rust-common's `go-clock`,
+  re-exported), so the tests can drive it; only `go-clock`'s `SystemClock` and the debug weather
+  simulation read the wall clock, the latter through an
   `#[expect(clippy::disallowed_methods, reason = "...")]`.
 - **Daylight saving:** every "local date and wall time to instant" conversion goes through
   `clock::resolve_local` (a gap moves forward by its length, a fold takes the earlier instant). No
