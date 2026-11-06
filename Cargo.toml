@@ -77,6 +77,9 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 serde_repr = "0.1.21"
 serde_yaml_ng = "0.10"
+# The build stamps (buildinfo!), and the runtime: its builder and the bound on its shutdown
+# (build_runtime, run_until_exit, Exit) (rust-common).
+service-kit = { workspace = true, features = ["runtime"] }
 sunrise = "3"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }

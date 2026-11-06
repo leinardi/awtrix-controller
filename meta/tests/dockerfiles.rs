@@ -35,9 +35,9 @@ use std::process::{Command, Output};
 
 use repo_meta::dockerfile::{self, Stage};
 use repo_meta::image::{
-    BasePolicy, BuildBase, BuildStage, Download, RuntimeStage, build_stage_problems, dockerfiles,
-    label_policy_problems, label_problems, only_dockerfile_problems, platform_problems,
-    runtime_problems, stage_problems, syntax_problems,
+    BasePolicy, BuildBase, BuildStage, Download, RuntimeStage, STAMP_FIELDS, StampSources, Stamps,
+    build_stage_problems, dockerfiles, label_policy_problems, label_problems,
+    only_dockerfile_problems, platform_problems, runtime_problems, stage_problems, syntax_problems,
 };
 use repo_meta::{Problem, pattern, report, strings};
 
@@ -51,6 +51,15 @@ const WANT_PLATFORMS: &str = "linux/amd64,linux/arm64";
 /// dhi.io/static has no arm/v7, and no 386.
 const FORBIDDEN_PLATFORMS: &[&str] = &["linux/arm/v", "linux/386"];
 const STAGES: &[&str] = &["build", "runtime"];
+
+/// The version stamps src/version.rs reads (through service-kit's `buildinfo!`), the build stage's
+/// RUN that runs cargo zigbuild sets and make-common's rust.mk sets for `make rust-build`.
+const STAMPS: Stamps<'static> = Stamps {
+    prefix: "AWTRIX_CONTROLLER",
+    fields: &STAMP_FIELDS,
+    version_file: "src/version.rs",
+    build_command: "cargo zigbuild",
+};
 
 /// The seven OCI labels of the runtime stage, exactly; `None` means any non-empty value.
 const WANT_LABELS: &[(&str, Option<&str>)] = &[
@@ -210,6 +219,23 @@ fn build_problems(dockerfile: &str) -> Vec<Problem> {
     build_stage_problems(&stage(dockerfile, "build"), &rules)
 }
 
+/// The stamps of `dockerfile`, against src/version.rs, the Makefile and make-common's rust.mk.
+fn stamp_problems(dockerfile: &str) -> Vec<Problem> {
+    stamp_problems_with(dockerfile, &meta::repo().read(STAMPS.version_file))
+}
+
+/// [`stamp_problems`], against the version module `version_rs`.
+fn stamp_problems_with(dockerfile: &str, version_rs: &str) -> Vec<Problem> {
+    let repo = meta::repo();
+    STAMPS.problems(&StampSources {
+        version_rs,
+        build: &stage(dockerfile, "build"),
+        makefile: &repo.read("Makefile"),
+        rust_mk: &repo.read(".mk/rust.mk"),
+        release: None,
+    })
+}
+
 /// The runtime stage's rules: the shell-less static base, nothing run or written in it, the
 /// binary, the MQTT port and the entrypoint, exactly the seven OCI labels, and no root user.
 /// There is no USER instruction: the image relies on dhi.io/static's non-root default, and an
@@ -291,6 +317,17 @@ fn shipped_stages_are_build_and_runtime() {
 #[test]
 fn build_stage() {
     let problems = build_problems(&shipped());
+    assert!(problems.is_empty(), "{}", report(&problems));
+}
+
+/// The version, commit and date the binary reports come from the build: the build stage (in the
+/// RUN that runs cargo zigbuild) and the make targets set the three variables src/version.rs
+/// reads at compile time (service-kit's `buildinfo!`), from the same build arguments and git
+/// values. A path that stamped nothing would ship a binary reporting "dev". The release
+/// workflow's binaries are stamped in `.github/workflows/release.yaml`, which this does not check.
+#[test]
+fn version_is_stamped() {
+    let problems = stamp_problems(&shipped());
     assert!(problems.is_empty(), "{}", report(&problems));
 }
 
@@ -552,6 +589,54 @@ fn build_rules_refuse_each_edit() {
             want,
             "{name}: want {want} problems, got:\n{}",
             report(&problems)
+        );
+    }
+}
+
+/// The negative control of the stamp rules: one stamp out of the building RUN, and altered copies
+/// of the real src/version.rs (its `buildinfo!` under another prefix, the call commented out, and
+/// a `buildinfo!` that is not service-kit's), each of which reads none of the three stamps.
+#[test]
+fn stamp_rules_refuse_each_edit() {
+    let shipped = shipped();
+    let unstamped = edited(&shipped, "AWTRIX_CONTROLLER_DATE=\"${DATE}\" \\\n", "\\\n");
+    assert_eq!(
+        strings(&stamp_problems(&unstamped)),
+        ["the RUN that runs cargo zigbuild does not stamp AWTRIX_CONTROLLER_DATE from $DATE"]
+    );
+
+    let version_rs = meta::repo().read(STAMPS.version_file);
+    let altered = |from: &str, to: &str| {
+        let altered = version_rs.replacen(from, to, 1);
+        assert_ne!(
+            altered, version_rs,
+            "the alteration {from:?} changed nothing"
+        );
+        altered
+    };
+    let unread = |field: &str| format!("src/version.rs does not read AWTRIX_CONTROLLER_{field}");
+    let want = [unread("VERSION"), unread("COMMIT"), unread("DATE")];
+    for (name, broken) in [
+        (
+            "another prefix",
+            altered("\x22AWTRIX_CONTROLLER\x22,", "\x22AWTRIX\x22,"),
+        ),
+        (
+            "the call commented out",
+            altered("const BUILD", "// const BUILD"),
+        ),
+        (
+            "a buildinfo! that is not service-kit's",
+            altered(
+                "use service_kit::{BuildInfo, Defaults, EmptyStamp, buildinfo};",
+                "use service_kit::{BuildInfo, Defaults, EmptyStamp};",
+            ),
+        ),
+    ] {
+        assert_eq!(
+            strings(&stamp_problems_with(&shipped, &broken)),
+            want,
+            "{name} was accepted"
         );
     }
 }

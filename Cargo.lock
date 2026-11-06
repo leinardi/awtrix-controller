@@ -209,6 +209,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serde_yaml_ng",
+ "service-kit",
  "sunrise",
  "thiserror 2.0.21",
  "tokio",
@@ -2542,6 +2543,14 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "service-kit"
+version = "0.1.0"
+source = "git+https://github.com/leinardi/rust-common?rev=84186a1b24af2dfbff24455d0027cb7c23976f27#84186a1b24af2dfbff24455d0027cb7c23976f27"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]

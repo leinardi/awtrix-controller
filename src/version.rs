@@ -24,22 +24,26 @@
 
 //! The build's version strings, set at compile time through `AWTRIX_CONTROLLER_VERSION`,
 //! `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`make rust-build`, `make rust-run`
-//! and the image build pass them), and logged once at startup.
+//! and the image build pass them), read by service-kit's `buildinfo!`, and logged once at startup.
+//! A stamp the build did not set takes its default; one set to the empty string stays empty.
+
+use service_kit::{BuildInfo, Defaults, EmptyStamp, buildinfo};
+
+const BUILD: BuildInfo = buildinfo!(
+    "AWTRIX_CONTROLLER",
+    Defaults {
+        version: "dev",
+        commit: "none",
+        date: "unknown",
+        empty: EmptyStamp::Kept,
+    },
+);
 
 /// The release version, `dev` for a local build.
-pub const VERSION: &str = match option_env!("AWTRIX_CONTROLLER_VERSION") {
-    Some(version) => version,
-    None => "dev",
-};
+pub const VERSION: &str = BUILD.version;
 
 /// The commit built, `none` when unknown.
-pub const COMMIT: &str = match option_env!("AWTRIX_CONTROLLER_COMMIT") {
-    Some(commit) => commit,
-    None => "none",
-};
+pub const COMMIT: &str = BUILD.commit;
 
 /// The build date, `unknown` when unknown.
-pub const DATE: &str = match option_env!("AWTRIX_CONTROLLER_DATE") {
-    Some(date) => date,
-    None => "unknown",
-};
+pub const DATE: &str = BUILD.date;
