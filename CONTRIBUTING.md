@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Rust 1.98: [rustup](https://rustup.rs/) installs the `1.98.0` toolchain that
+- Rust 1.98: [rustup](https://rustup.rs/) installs the `1.98.1` toolchain that
   `rust-toolchain.toml` pins, with clippy and rustfmt, on the first `cargo` command
 - [cargo-deny](https://github.com/EmbarkStudios/cargo-deny), for `make audit-deps` and
   `make rust-deny` (`cargo install --locked cargo-deny`)

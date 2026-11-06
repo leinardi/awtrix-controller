@@ -121,7 +121,7 @@ the tagged commit (see [Recovering a failed publish](#recovering-a-failed-publis
    `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`) and `audit` (`cargo deny check`: advisories, licences,
    bans and sources). They are copies of the CI jobs rather than a call into `ci.yaml`, so a release
    never depends on which pull request last ran CI, and `test` uses the pinned Rust toolchain
-   (`1.98.0`) the release builds with.
+   (`1.98.1`) the release builds with.
 3. **Resolve the version**, as in [Versioning](#versioning).
 4. **Check the tag.** If `refs/tags/<version>` already exists on the remote, the run continues only
    when it points at `HEAD`, as a recovery. Pointing anywhere else is a hard failure. The tag is
@@ -339,7 +339,7 @@ digest together. `svu` (`SVU_VERSION` with its `SVU_SHA256`) and Trivy (`TRIVY_V
 reason. Pinning Trivy does not pin what it knows: its vulnerability database is fetched at run time,
 which is the point of scanning at release time.
 
-**The Rust build is pinned the same way.** Every job takes Rust `1.98.0` from
+**The Rust build is pinned the same way.** Every job takes Rust `1.98.1` from
 `dtolnay/rust-toolchain`, the version `rust-toolchain.toml` names. The release job gets zig and
 cargo-zigbuild from [`.github/actions/setup-zigbuild`](../.github/actions/setup-zigbuild/action.yaml),
 which downloads their release archives and checks each against a sha256 before using it, at the

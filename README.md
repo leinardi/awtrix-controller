@@ -32,7 +32,7 @@ Awtrix3 devices connect to directly. Once a device connects, the controller:
 
 ## Requirements
 
-- Rust 1.98 (for building from source; `rust-toolchain.toml` pins `1.98.0`, which rustup installs
+- Rust 1.98 (for building from source; `rust-toolchain.toml` pins `1.98.1`, which rustup installs
   on first use)
 - Docker (for the container image)
 - Awtrix3 firmware configured to connect to this broker's hostname/IP
