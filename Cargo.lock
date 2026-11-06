@@ -198,8 +198,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "clock",
  "futures",
- "go-clock",
  "jiff",
  "log",
  "rmqtt",
@@ -392,6 +392,15 @@ name = "clap_lex"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
+
+[[package]]
+name = "clock"
+version = "0.4.0"
+source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+dependencies = [
+ "jiff",
+ "tokio",
+]
 
 [[package]]
 name = "cobs"
@@ -980,23 +989,6 @@ dependencies = [
  "r-efi 6.0.0",
  "rand_core 0.10.1",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "go-clock"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
-dependencies = [
- "jiff",
- "tokio",
-]
-
-[[package]]
-name = "go-compat"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
-dependencies = [
- "jiff",
 ]
 
 [[package]]
@@ -2101,10 +2093,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "repo-meta"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
+version = "0.4.0"
+source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
 dependencies = [
- "go-compat",
  "regex",
  "serde-saphyr",
  "serde_json",
@@ -2547,8 +2538,8 @@ dependencies = [
 
 [[package]]
 name = "service-kit"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
+version = "0.4.0"
+source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
 dependencies = [
  "tokio",
 ]
@@ -2846,10 +2837,9 @@ dependencies = [
 
 [[package]]
 name = "testenv-core"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
+version = "0.4.0"
+source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
 dependencies = [
- "go-compat",
  "jiff",
  "regex",
 ]
@@ -3172,8 +3162,8 @@ dependencies = [
 
 [[package]]
 name = "tracing-setup"
-version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.3.0#0d93d4baed5a314a5f5c5d0a56093c85e1b86257"
+version = "0.4.0"
+source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
 dependencies = [
  "serde_json",
  "tracing",

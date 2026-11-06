@@ -10,7 +10,7 @@ repeatedly bite:
   `.lock().unwrap_or_else(PoisonError::into_inner)`.
 - `print_stdout`/`print_stderr` denied: log via `tracing`, `writeln!` for `--version`.
 - `disallowed_methods`: no `Timestamp::now`/`Zoned::now`/`SystemTime::now`/`Instant::now` outside
-  go-clock's `SystemClock` (re-exported by `src/clock`) and the weather simulation; use the
+  clock's `SystemClock` (re-exported by `src/clock`) and the weather simulation; use the
   injected `Clock`.
 - pedantic: `#[must_use]` on pure fns, `# Errors` docs, identifiers in backticks in docs.
 - Public items before private ones within an `impl` (review rule, not linted).

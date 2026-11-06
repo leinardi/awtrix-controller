@@ -27,8 +27,8 @@
 //! instant.
 //!
 //! The clock itself ([`Clock`], [`SystemClock`], [`TokioClock`] and the tests' `FakeClock`) is
-//! rust-common's `go-clock`, re-exported here so the call sites name `crate::clock`. Only
-//! `go-clock`'s `SystemClock` and the debug weather simulation read the wall clock (`clippy.toml`
+//! rust-common's `clock`, re-exported here so the call sites name `crate::clock`. Only
+//! `clock`'s `SystemClock` and the debug weather simulation read the wall clock (`clippy.toml`
 //! bans `Timestamp::now` and its kin in this crate).
 
 use jiff::civil::{Date, Time};
@@ -36,8 +36,8 @@ use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan};
 
 #[cfg(test)]
-pub(crate) use go_clock::FakeClock;
-pub use go_clock::{Clock, SystemClock, TokioClock};
+pub(crate) use clock::FakeClock;
+pub use clock::{Clock, SystemClock, TokioClock};
 
 /// Converts a local date and wall-clock time in `zone` to an instant. Every such conversion goes
 /// through here, so the daylight-saving policy is decided once:
