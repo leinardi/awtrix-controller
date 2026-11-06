@@ -145,7 +145,7 @@ every connected
   forward by its length, a fold takes the earlier instant); another conversion is a finding.
   Monthly days past the month's end clamp to its last day, `02-29` to February 28 outside leap
   years. Fire times are strictly after `from`.
-- No wall clock outside `go-clock`'s `SystemClock` (re-exported by `src/clock`) and the debug
+- No wall clock outside `clock`'s `SystemClock` (re-exported by `src/clock`) and the debug
   weather simulation (`clippy.toml` `disallowed-methods`); a new
   `#[expect(clippy::disallowed_methods)]` elsewhere is a finding.
 - With no `timezone`, day/night, energy saving and scheduled notifications use the system zone

@@ -107,7 +107,7 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 
 ### Shared crates (rust-common)
 
-`go-clock` (the injected clock, re-exported by `src/clock`), `service-kit` (`buildinfo!`, and with
+`clock` (the injected clock, re-exported by `src/clock`), `service-kit` (`buildinfo!`, and with
 its `runtime` feature the runtime builder and its bounded shutdown) and `tracing-setup` (the
 logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]` add its `testing`
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
@@ -129,9 +129,9 @@ its own features.
   also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
   only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock` changes together. `deny.toml`
   allow-lists the source (`allow-git`); it changes with the URL. `make rust-deny` checks the root
-  package's graph only (`RUST_DENY_ARGS` is empty), so `go-clock`, `service-kit` and
-  `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`, `testenv-core`,
-  `go-compat` and its other dependencies) is not.
+  package's graph only (`RUST_DENY_ARGS` is empty), so `clock`, `service-kit` and
+  `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`, `testenv-core`
+  and their dependencies) is not.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
@@ -150,7 +150,7 @@ This repository's intentional differences from the other Rust services:
 - **The local-time conversions stay local** (`clock::resolve_local`, `clock::next_local_midnight`):
   they are this controller's daylight-saving policy on jiff's zones, not part of the injected
   clock; only `Clock`, `SystemClock`, `TokioClock` and the tests' `FakeClock` come from
-  `go-clock`.
+  `clock`.
 
 ## Validation matrix
 
@@ -201,8 +201,8 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 
 - **Clock discipline:** `clippy.toml`'s `disallowed-methods` bans `jiff::Timestamp::now`,
   `jiff::Zoned::now`, `std::time::SystemTime::now` and `std::time::Instant::now`. Scheduling and
-  window code reads the time from the injected `src/clock` clock (rust-common's `go-clock`,
-  re-exported), so the tests can drive it; only `go-clock`'s `SystemClock` and the debug weather
+  window code reads the time from the injected `src/clock` clock (rust-common's `clock`,
+  re-exported), so the tests can drive it; only `clock`'s `SystemClock` and the debug weather
   simulation read the wall clock, the latter through an
   `#[expect(clippy::disallowed_methods, reason = "...")]`.
 - **Daylight saving:** every "local date and wall time to instant" conversion goes through
