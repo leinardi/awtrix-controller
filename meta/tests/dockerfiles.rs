@@ -23,228 +23,298 @@
  */
 
 //! The shipped image: its one Dockerfile, the pinned frontend, the build and runtime stages, the
-//! labels and the platforms, and droast's enforcement of the label schema.
+//! labels and the platforms, and droast's enforcement of the label schema. The rules that need no
+//! tool are `repo_meta::image`'s, with this repository's parameters, and their negative controls
+//! run them on altered copies of the real files; the label arguments and the droast runs (with
+//! the tool gate `meta::TOOLS`) are this repository's own.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use meta::dockerfile::{self, Stage};
-use meta::{repo, toolgate};
-use regex::Regex;
+use repo_meta::dockerfile::{self, Stage};
+use repo_meta::image::{
+    BasePolicy, BuildBase, BuildStage, Download, RuntimeStage, build_stage_problems, dockerfiles,
+    label_policy_problems, label_problems, only_dockerfile_problems, platform_problems,
+    runtime_problems, stage_problems, syntax_problems,
+};
+use repo_meta::{Problem, pattern, report, strings};
 
-const SHIPPED_DIR: &str = "deployments/docker";
 const SHIPPED_DOCKERFILE: &str = "deployments/docker/Dockerfile";
 const RELEASE_WORKFLOW: &str = ".github/workflows/release.yaml";
+const WORKFLOWS_DIR: &str = ".github/workflows";
 const DOCKER_FRAGMENT: &str = ".mk/docker.mk";
 const DROAST_CONFIG: &str = "droast.toml";
+const SETUP_ZIGBUILD: &str = ".github/actions/setup-zigbuild/action.yaml";
 const WANT_PLATFORMS: &str = "linux/amd64,linux/arm64";
+/// dhi.io/static has no arm/v7, and no 386.
+const FORBIDDEN_PLATFORMS: &[&str] = &["linux/arm/v", "linux/386"];
+const STAGES: &[&str] = &["build", "runtime"];
 
-/// The seven OCI labels of the runtime stage; an empty value means any non-empty one.
-const WANT_LABELS: &[(&str, &str)] = &[
-    ("org.opencontainers.image.title", "awtrix-controller"),
-    ("org.opencontainers.image.description", ""),
+/// The seven OCI labels of the runtime stage, exactly; `None` means any non-empty value.
+const WANT_LABELS: &[(&str, Option<&str>)] = &[
+    ("org.opencontainers.image.title", Some("awtrix-controller")),
+    ("org.opencontainers.image.description", None),
     (
         "org.opencontainers.image.source",
-        "https://github.com/leinardi/awtrix-controller",
+        Some("https://github.com/leinardi/awtrix-controller"),
     ),
-    ("org.opencontainers.image.version", "${VERSION}"),
-    ("org.opencontainers.image.revision", "${COMMIT}"),
-    ("org.opencontainers.image.created", "${DATE}"),
-    ("org.opencontainers.image.licenses", "MIT"),
+    ("org.opencontainers.image.version", Some("${VERSION}")),
+    ("org.opencontainers.image.revision", Some("${COMMIT}")),
+    ("org.opencontainers.image.created", Some("${DATE}")),
+    ("org.opencontainers.image.licenses", Some("MIT")),
 ];
 
-fn shipped_stages() -> Vec<Stage> {
-    dockerfile::parse(&repo::read(SHIPPED_DOCKERFILE))
-        .unwrap_or_else(|error| panic!("{SHIPPED_DOCKERFILE}: {error}"))
+/// What the build stage's joined instructions must contain: the stamp arguments, the toolchain
+/// pins, the platform arguments, the static musl triples, the checked downloads, the locked
+/// cargo-zigbuild install and build, the version stamps and the copy of the binary.
+const BUILD_REQUIRED: &[&str] = &[
+    "ARG VERSION",
+    "ARG COMMIT",
+    "ARG DATE",
+    "ARG RUST_VERSION=",
+    "ARG ZIG_VERSION=",
+    "ARG CARGO_ZIGBUILD_VERSION=",
+    "ARG BUILDARCH",
+    "ARG TARGETARCH",
+    "amd64) triple=x86_64-unknown-linux-musl;",
+    "arm64) triple=aarch64-unknown-linux-musl;",
+    "sha256sum -c -",
+    r#"cargo install --locked "cargo-zigbuild@${CARGO_ZIGBUILD_VERSION}""#,
+    r#"cargo zigbuild --release --locked --target "${triple}" --bin awtrix-controller"#,
+    r#"AWTRIX_CONTROLLER_VERSION="${VERSION}""#,
+    r#"AWTRIX_CONTROLLER_COMMIT="${COMMIT}""#,
+    r#"AWTRIX_CONTROLLER_DATE="${DATE}""#,
+    r#"cp "target/${triple}/release/awtrix-controller" /out/awtrix-controller"#,
+];
+
+fn shipped() -> String {
+    meta::repo().read(SHIPPED_DOCKERFILE)
 }
 
-fn stage(name: &str) -> Stage {
-    let found: Vec<Stage> = shipped_stages()
-        .into_iter()
-        .filter(|candidate| candidate.name == name)
-        .collect();
-    match <[Stage; 1]>::try_from(found) {
-        Ok([stage]) => stage,
-        Err(found) => panic!(
-            "{SHIPPED_DOCKERFILE} has {} stages named {name}, want one",
-            found.len()
-        ),
+/// The stage named `name` of `content`, which must be the only one.
+fn stage(content: &str, name: &str) -> Stage {
+    let stages =
+        dockerfile::parse(content).unwrap_or_else(|error| panic!("{SHIPPED_DOCKERFILE}: {error}"));
+    dockerfile::stage_named(SHIPPED_DOCKERFILE, &stages, name)
+        .cloned()
+        .unwrap_or_else(|problem| panic!("{problem}"))
+}
+
+/// The value the setup-zigbuild action pins for `key`: CI's copy of the zig release the build
+/// stage must download, so the build stage's rule does not read its own.
+fn action_pin(key: &str) -> String {
+    let action = meta::repo().read(SETUP_ZIGBUILD);
+    pattern(&format!(r#"(?m)^\s*{key}:\s*"?([\d.]+)"?\s*$"#))
+        .captures(&action)
+        .map_or_else(
+            || panic!("{SETUP_ZIGBUILD} pins no {key}"),
+            |captures| captures[1].to_owned(),
+        )
+}
+
+/// The exact release of the build stage's dhi.io/rust tag, which its musl standard libraries
+/// must be downloaded for (`toolchain.rs` holds the tag to `ARG RUST_VERSION` and to the line of
+/// rust-toolchain.toml); `<no exact release>` when the tag names none, which the rule refuses.
+fn image_release(dockerfile: &str) -> String {
+    let build = stage(dockerfile, "build");
+    pattern(r"^(\d+\.\d+\.\d+)-")
+        .captures(dockerfile::tag(&build.image))
+        .map_or_else(
+            || "<no exact release>".to_owned(),
+            |captures| captures[1].to_owned(),
+        )
+}
+
+/// The arms a download must have, each `(platform, asset)` with the sha256 the Dockerfile's arm
+/// for exactly that platform and asset writes. The pairs are this repository's; a digest that is
+/// not a sha256, or an arm with another asset, leaves the arm unread, so the rule refuses it.
+fn arms(
+    dockerfile: &str,
+    asset_var: &str,
+    sha_var: &str,
+    pairs: &[(&str, &str)],
+) -> Vec<(String, String, String)> {
+    pairs
+        .iter()
+        .map(|(platform, asset)| {
+            let digest = pattern(&format!(
+                r"{}\)\s*{asset_var}={}; {sha_var}=([0-9a-f]{{64}}) ;;",
+                regex::escape(platform),
+                regex::escape(asset)
+            ))
+            .captures(dockerfile)
+            .map_or_else(
+                || "<no sha256 arm>".to_owned(),
+                |captures| captures[1].to_owned(),
+            );
+            ((*platform).to_owned(), (*asset).to_owned(), digest)
+        })
+        .collect()
+}
+
+/// The build stage's two downloads: zig for the build platform at the release CI pins too, and
+/// the target platform's musl standard library for the image's own Rust release; each in its own
+/// RUN, chosen by its platform argument's `case` with exactly these arms, and checked with
+/// `sha256sum -c -`. cargo-zigbuild is not downloaded: cargo installs it, `--locked`.
+fn downloads(dockerfile: &str) -> Vec<Download<'static>> {
+    vec![
+        Download {
+            tool: "zig",
+            url: "https://ziglang.org/download/${ZIG_VERSION}/zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz",
+            platform_arg: "BUILDARCH",
+            version_arg: "ZIG_VERSION",
+            version: action_pin("ZIG_VERSION"),
+            asset_var: "zig_arch",
+            sha_var: "zig_sha256",
+            arms: arms(
+                dockerfile,
+                "zig_arch",
+                "zig_sha256",
+                &[("amd64", "x86_64"), ("arm64", "aarch64")],
+            ),
+        },
+        Download {
+            tool: "the musl rust-std",
+            url: "https://static.rust-lang.org/dist/rust-std-${RUST_VERSION}-${triple}.tar.xz",
+            platform_arg: "TARGETARCH",
+            version_arg: "RUST_VERSION",
+            version: image_release(dockerfile),
+            asset_var: "triple",
+            sha_var: "std_sha256",
+            arms: arms(
+                dockerfile,
+                "triple",
+                "std_sha256",
+                &[
+                    ("amd64", "x86_64-unknown-linux-musl"),
+                    ("arm64", "aarch64-unknown-linux-musl"),
+                ],
+            ),
+        },
+    ]
+}
+
+/// The build stage's rules against `dockerfile`: on the build platform, from dhi.io/rust,
+/// cross-compiled by cargo-zigbuild to the target platform's static musl triple from the locked
+/// dependency graph, stamped, with every download a rule's and checked in the RUN that fetches it.
+fn build_problems(dockerfile: &str) -> Vec<Problem> {
+    let downloads = downloads(dockerfile);
+    let rules = BuildStage {
+        platform: "$BUILDPLATFORM",
+        base: BuildBase::Repository("dhi.io/rust"),
+        required: BUILD_REQUIRED,
+        downloads: &downloads,
+    };
+    build_stage_problems(&stage(dockerfile, "build"), &rules)
+}
+
+/// The runtime stage's rules: the shell-less static base, nothing run or written in it, the
+/// binary, the MQTT port and the entrypoint, exactly the seven OCI labels, and no root user.
+/// There is no USER instruction: the image relies on dhi.io/static's non-root default, and an
+/// explicit root user would be a regression (a rule repo-meta's runtime rules do not hold, so it
+/// stays here).
+fn runtime_stage_problems(dockerfile: &str) -> Vec<Problem> {
+    let rules = RuntimeStage {
+        repository: "dhi.io/static",
+        forbidden: &["RUN", "SHELL", "VOLUME", "ADD", "ENV"],
+        exactly: &[
+            ("EXPOSE", "1883"),
+            ("ENTRYPOINT", r#"["/usr/local/bin/awtrix-controller"]"#),
+            (
+                "COPY",
+                "--from=build /out/awtrix-controller /usr/local/bin/awtrix-controller",
+            ),
+        ],
+    };
+    let runtime = stage(dockerfile, "runtime");
+    let mut problems = runtime_problems(&runtime, &rules);
+    for instruction in &runtime.instructions {
+        if instruction.keyword == "USER" {
+            let user = instruction
+                .args
+                .split_once(':')
+                .map_or(instruction.args.as_str(), |(user, _)| user);
+            if user == "root" || user == "0" {
+                problems.push(Problem::new(format!(
+                    "the runtime stage runs as {}",
+                    instruction.args
+                )));
+            }
+        }
     }
+    problems.extend(label_problems(&runtime, WANT_LABELS));
+    problems
 }
 
-/// Go: `TestShippedDockerfileIsTheOnlyOne`. deployments/docker holds exactly the image that ships.
-/// A second file there would look shipped to every reader and be built by nothing.
+/// Every workflow, with its text.
+fn workflows() -> Vec<(String, String)> {
+    let repo = meta::repo();
+    repo.read_all(&repo.files_under(WORKFLOWS_DIR, &[".yaml", ".yml"]))
+}
+
+/// Go: `TestShippedDockerfileIsTheOnlyOne`. deployments/docker holds exactly the image that
+/// ships, and the repository no other Dockerfile (tracked or new, `Dockerfile.<name>` and
+/// `<name>.Dockerfile` included): a second one would look shipped to every reader and be built by
+/// nothing.
 #[test]
 fn shipped_dockerfile_is_the_only_one() {
-    let mut found: Vec<String> = fs::read_dir(repo::path(SHIPPED_DIR))
-        .expect("list deployments/docker")
-        .map(|entry| {
-            entry
-                .expect("directory entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .filter(|name| name == "Dockerfile" || name.ends_with(".Dockerfile"))
-        .collect();
-    found.sort();
-    assert_eq!(found, ["Dockerfile"], "{SHIPPED_DIR} holds {found:?}");
+    let problems = only_dockerfile_problems(&dockerfiles(&meta::repo()), SHIPPED_DOCKERFILE);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestSyntaxDirectiveIsPinned`. The `BuildKit` frontend that reads the Dockerfile is a
-/// literal reference pinned by digest: a bare docker/dockerfile:1.7 is a tag that can be moved
-/// under a build, and Dependabot never updates the line (docs/release.md).
+/// literal docker/dockerfile reference pinned by tag and digest: a bare docker/dockerfile:1.7 is a
+/// tag that can be moved under a build, and Dependabot never updates the line (docs/release.md).
 #[test]
 fn syntax_directive_is_pinned() {
-    let syntax = dockerfile::syntax(&repo::read(SHIPPED_DOCKERFILE))
-        .expect("the Dockerfile has a syntax parser directive on its first line");
-    assert_eq!(
-        dockerfile::repository(&syntax),
-        "docker/dockerfile",
-        "{syntax}"
-    );
-    assert!(
-        dockerfile::digest_pinned(&syntax),
-        "the frontend {syntax:?} is not pinned by digest"
-    );
+    let problems = syntax_problems(SHIPPED_DOCKERFILE, &shipped(), true);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestShippedStages`. Exactly two named stages, in order, each from a literal base pinned by
-/// tag. The bases are deliberately not pinned by digest: dhi.io republishes its tags to ship
-/// security fixes, and every release build is scanned. A variable base, a missing tag or latest
-/// would leave the base unreviewable.
+/// tag alone (`BasePolicy::TagOnly`; the build and runtime rules hold each to its dhi.io
+/// repository). The bases are deliberately not pinned by digest: dhi.io republishes its tags to
+/// ship security fixes, and every release build is scanned. A variable base, a missing tag or
+/// latest would leave the base unreviewable.
 #[test]
 fn shipped_stages_are_build_and_runtime() {
-    let stages = shipped_stages();
-    for stage in &stages {
-        assert!(
-            dockerfile::tag_pinned(&stage.image),
-            "stage {:?} is FROM {:?}, want a literal reference with a tag other than latest",
-            stage.name,
-            stage.image
-        );
-    }
-    let names: Vec<&str> = stages.iter().map(|stage| stage.name.as_str()).collect();
-    assert_eq!(names, ["build", "runtime"]);
+    let problems = stage_problems(SHIPPED_DOCKERFILE, &shipped(), STAGES, BasePolicy::TagOnly);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestBuildStage`, for the Rust build: on the build platform, cross-compiled by
 /// cargo-zigbuild to the target platform's static musl triple, from the locked dependency graph,
-/// with the toolchain downloads checked, and stamped with the version strings the binary reads.
+/// with every toolchain download checked against its own digest in the RUN that fetches it, and
+/// stamped with the version strings the binary reads.
 #[test]
 fn build_stage() {
-    let build = stage("build");
-    assert_eq!(build.platform, "$BUILDPLATFORM");
-    assert_eq!(dockerfile::repository(&build.image), "dhi.io/rust");
-
-    let instructions = build.joined();
-    let missing: Vec<&str> = [
-        "ARG VERSION",
-        "ARG COMMIT",
-        "ARG DATE",
-        "ARG RUST_VERSION=",
-        "ARG ZIG_VERSION=",
-        "ARG CARGO_ZIGBUILD_VERSION=",
-        "ARG BUILDARCH",
-        "ARG TARGETARCH",
-        "amd64) triple=x86_64-unknown-linux-musl;",
-        "arm64) triple=aarch64-unknown-linux-musl;",
-        "sha256sum -c -",
-        r#"cargo install --locked "cargo-zigbuild@${CARGO_ZIGBUILD_VERSION}""#,
-        r#"cargo zigbuild --release --locked --target "${triple}" --bin awtrix-controller"#,
-        r#"AWTRIX_CONTROLLER_VERSION="${VERSION}""#,
-        r#"AWTRIX_CONTROLLER_COMMIT="${COMMIT}""#,
-        r#"AWTRIX_CONTROLLER_DATE="${DATE}""#,
-        r#"cp "target/${triple}/release/awtrix-controller" /out/awtrix-controller"#,
-    ]
-    .into_iter()
-    .filter(|want| !instructions.contains(want))
-    .collect();
-    assert!(
-        missing.is_empty(),
-        "the build stage lacks {missing:?}:\n{instructions}"
-    );
-
-    // Every download is checked against its own digest: each curl in the stage is followed by a
-    // sha256sum check of the file it wrote.
-    let downloads = instructions.matches("curl -fsSL").count();
-    let checks = instructions.matches("| sha256sum -c -").count();
-    assert!(downloads > 0, "the build stage downloads nothing");
-    assert_eq!(
-        downloads, checks,
-        "a download in the build stage is not checked"
-    );
+    let problems = build_problems(&shipped());
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestRuntimeStage`. The posture of the image that ships: the shell-less static base,
 /// nothing run or written in it, the binary and the MQTT port, and exactly the seven OCI labels.
-/// There is no USER instruction: the image relies on dhi.io/static's non-root default, and an
-/// explicit root user would be a regression.
 #[test]
 fn runtime_stage() {
-    let runtime = stage("runtime");
-    assert_eq!(dockerfile::repository(&runtime.image), "dhi.io/static");
-    assert!(
-        runtime.platform.is_empty(),
-        "the runtime stage pins --platform={}; it has to follow the target platform",
-        runtime.platform
+    let problems = runtime_stage_problems(&shipped());
+    assert!(problems.is_empty(), "{}", report(&problems));
+}
+
+/// The labels droast.toml requires are exactly the runtime stage's, strict-labels refuses any
+/// other, and a missing label (DF074) keeps the severity droast ships, an error. The tool-free
+/// half of droast's label schema; the droast runs below are the other.
+#[test]
+fn label_policy_matches_the_runtime_labels() {
+    let repo = meta::repo();
+    let problems = label_policy_problems(
+        SHIPPED_DOCKERFILE,
+        &shipped(),
+        DROAST_CONFIG,
+        &repo.read(DROAST_CONFIG),
     );
-
-    let mut problems = Vec::new();
-    for instruction in &runtime.instructions {
-        match instruction.keyword.as_str() {
-            "RUN" | "SHELL" | "VOLUME" | "ADD" | "ENV" => problems.push(format!(
-                "the runtime stage carries {} {}; it has no shell and writes nothing",
-                instruction.keyword, instruction.args
-            )),
-            "USER" => {
-                let user = instruction
-                    .args
-                    .split_once(':')
-                    .map_or(instruction.args.as_str(), |(user, _)| user);
-                if user == "root" || user == "0" {
-                    problems.push(format!("the runtime stage runs as {}", instruction.args));
-                }
-            }
-            _ => {}
-        }
-    }
-    for (keyword, args) in [
-        ("EXPOSE", "1883"),
-        ("ENTRYPOINT", r#"["/usr/local/bin/awtrix-controller"]"#),
-        (
-            "COPY",
-            "--from=build /out/awtrix-controller /usr/local/bin/awtrix-controller",
-        ),
-    ] {
-        let seen: Vec<&str> = runtime
-            .instructions
-            .iter()
-            .filter(|instruction| instruction.keyword == keyword)
-            .map(|instruction| instruction.args.as_str())
-            .collect();
-        if seen != [args] {
-            problems.push(format!(
-                "the runtime stage has {keyword} {seen:?}, want exactly {keyword} {args}"
-            ));
-        }
-    }
-
-    let labels = dockerfile::labels(&runtime);
-    for (key, value) in WANT_LABELS {
-        let actual = labels.get(*key).map_or("", String::as_str);
-        if actual.is_empty() || (!value.is_empty() && actual != *value) {
-            problems.push(format!("label {key} is {actual:?}, want {value:?}"));
-        }
-    }
-    if labels.len() != WANT_LABELS.len() {
-        problems.push(format!(
-            "the runtime stage carries labels {labels:?}, want exactly the seven OCI labels"
-        ));
-    }
-    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestLabelArgumentsAreSupplied`. Every build that publishes or runs an image passes the
@@ -252,28 +322,29 @@ fn runtime_stage() {
 /// say dev, none and unknown.
 #[test]
 fn label_arguments_are_supplied() {
+    let repo = meta::repo();
     for file in [RELEASE_WORKFLOW, DOCKER_FRAGMENT] {
-        let content = repo::read(file);
+        let content = repo.read(file);
         for argument in ["VERSION", "COMMIT", "DATE"] {
-            let pattern = Regex::new(&format!(r"(?m)(^\s*|--build-arg ){argument}=\S"))
-                .expect("valid pattern");
             assert!(
-                pattern.is_match(&content),
+                pattern(&format!(r"(?m)(^\s*|--build-arg ){argument}=\S")).is_match(&content),
                 "{file} does not pass the {argument} build argument"
             );
         }
     }
 }
 
-/// Go: `TestPlatforms`. The two platforms the release builds: dhi.io/static has no arm/v7.
+/// Go: `TestPlatforms`. The two platforms the release builds, wherever a workflow declares
+/// platforms, the release workflow among them: dhi.io/static has no arm/v7.
 #[test]
 fn platforms() {
-    let content = repo::read(RELEASE_WORKFLOW);
-    let platforms = Regex::new(r"(?m)^\s*PLATFORMS:\s*(\S+)\s*$")
-        .expect("valid pattern")
-        .captures(&content)
-        .map(|captures| captures[1].to_owned());
-    assert_eq!(platforms.as_deref(), Some(WANT_PLATFORMS));
+    let problems = platform_problems(
+        &workflows(),
+        RELEASE_WORKFLOW,
+        WANT_PLATFORMS,
+        FORBIDDEN_PLATFORMS,
+    );
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// The label test, by name: the gate tests below run it again in a child process.
@@ -282,15 +353,15 @@ const LABEL_TEST: &str = "droast_enforces_the_labels";
 /// The path of droast, after checking that the `shellcheck` its required bridge runs is on `PATH`
 /// too. `None` when either is missing and the test should return early.
 fn lookup_droast() -> Option<PathBuf> {
-    let droast = toolgate::lookup(toolgate::DROAST)?;
-    toolgate::lookup(toolgate::SHELLCHECK)?;
+    let droast = meta::TOOLS.lookup(meta::DROAST)?;
+    meta::TOOLS.lookup(meta::SHELLCHECK)?;
     Some(droast)
 }
 
 fn run_droast(droast: &Path, dockerfile: &Path) -> Output {
     Command::new(droast)
         .arg("--config")
-        .arg(repo::path(DROAST_CONFIG))
+        .arg(meta::repo().path(DROAST_CONFIG))
         .arg(dockerfile)
         .output()
         .unwrap_or_else(|error| panic!("run droast: {error}"))
@@ -304,8 +375,9 @@ fn droast_enforces_the_labels() {
     let Some(droast) = lookup_droast() else {
         return;
     };
+    let repo = meta::repo();
 
-    let output = run_droast(&droast, &repo::path(SHIPPED_DOCKERFILE));
+    let output = run_droast(&droast, &repo.path(SHIPPED_DOCKERFILE));
     assert!(
         output.status.success(),
         "droast rejects {SHIPPED_DOCKERFILE}:\n{}{}",
@@ -313,9 +385,8 @@ fn droast_enforces_the_labels() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let shipped = repo::read(SHIPPED_DOCKERFILE);
-    let without_version = Regex::new(r"(?m)^\s*org\.opencontainers\.image\.version=.*\n")
-        .expect("valid pattern")
+    let shipped = shipped();
+    let without_version = pattern(r"(?m)^\s*org\.opencontainers\.image\.version=.*\n")
         .replace_all(&shipped, "")
         .into_owned();
     assert_ne!(
@@ -340,7 +411,7 @@ fn droast_enforces_the_labels() {
 fn run_label_test_without_shellcheck(require: bool) -> Output {
     let path = tempfile::tempdir()
         .unwrap_or_else(|error| panic!("create the scratch PATH directory: {error}"));
-    let stub = path.path().join(toolgate::DROAST);
+    let stub = path.path().join(meta::DROAST);
     fs::write(&stub, "#!/bin/sh\nexit 0\n")
         .unwrap_or_else(|error| panic!("write the stub droast: {error}"));
     fs::set_permissions(&stub, fs::Permissions::from_mode(0o755))
@@ -353,9 +424,9 @@ fn run_label_test_without_shellcheck(require: bool) -> Output {
         .args([LABEL_TEST, "--exact", "--nocapture", "--test-threads=1"])
         .env("PATH", path.path());
     if require {
-        command.env(toolgate::REQUIRE_ENV, "1");
+        command.env(meta::TOOLS.require_env, "1");
     } else {
-        command.env_remove(toolgate::REQUIRE_ENV);
+        command.env_remove(meta::TOOLS.require_env);
     }
     command
         .output()
@@ -388,11 +459,329 @@ fn label_test_fails_without_shellcheck_when_tools_are_required() {
     assert!(
         !output.status.success() && stdout.contains("1 failed"),
         "{LABEL_TEST} did not fail without shellcheck under {}=1:\n{stdout}{stderr}",
-        toolgate::REQUIRE_ENV
+        meta::TOOLS.require_env
     );
     assert!(
         format!("{stdout}{stderr}").contains("shellcheck is required"),
         "{LABEL_TEST} failed for another reason than the missing shellcheck:\n{stdout}{stderr}"
+    );
+}
+
+/// `content` with its first `from` replaced by `to`; `from` must be there, so an edit cannot
+/// silently change nothing.
+fn edited(content: &str, from: &str, to: &str) -> String {
+    assert!(content.contains(from), "{from:?} is gone");
+    content.replacen(from, to, 1)
+}
+
+/// A negative control of the build stage rules: each edit of the real Dockerfile below breaks
+/// exactly one rule, and the rules report exactly that one problem.
+#[test]
+fn build_rules_refuse_each_edit() {
+    let content = shipped();
+    let edit = |from: &str, to: &str| edited(&content, from, to);
+    let zig_check = "\t&& echo \"${zig_sha256}  /tmp/zig.tar.xz\" | sha256sum -c - \\\n";
+    for (name, broken, want) in [
+        (
+            "an extra download beside a listed one",
+            edit(
+                zig_check,
+                &format!("{zig_check}\t&& curl -fsSL -o /tmp/x https://example.invalid/x \\\n"),
+            ),
+            2,
+        ),
+        ("an unchecked download", edit(zig_check, ""), 2),
+        (
+            "an arm for another platform",
+            edit(
+                "\t\t*) echo \"no zig for",
+                "\t\tarm) zig_arch=arm; zig_sha256=0000000000000000000000000000000000000000000000000000000000000000 ;; \\\n\t\t*) echo \"no zig for",
+            ),
+            1,
+        ),
+        (
+            "a zig release other than CI's",
+            edit("ARG ZIG_VERSION=", "ARG ZIG_VERSION=9"),
+            1,
+        ),
+        (
+            "rust-std for another release than the image's",
+            edit("ARG RUST_VERSION=", "ARG RUST_VERSION=9"),
+            1,
+        ),
+        (
+            "a fetch on its own, unchecked and unlisted",
+            edit(
+                "WORKDIR /src\n",
+                "RUN curl -fsSL -o /tmp/y https://example.invalid/y\nWORKDIR /src\n",
+            ),
+            2,
+        ),
+        (
+            "an ADD of a URL",
+            edit(
+                "WORKDIR /src\n",
+                "ADD https://example.invalid/z /tmp/z\nWORKDIR /src\n",
+            ),
+            1,
+        ),
+        (
+            "another build image repository",
+            edit("dhi.io/rust:", "docker.io/library/rust:"),
+            1,
+        ),
+        (
+            "the build stage on the target platform",
+            edit("--platform=$BUILDPLATFORM ", ""),
+            1,
+        ),
+        (
+            "an unlocked build",
+            edit("--release --locked --target", "--release --target"),
+            1,
+        ),
+        (
+            "an unstamped build",
+            edit("AWTRIX_CONTROLLER_DATE=\"${DATE}\" \\\n", "\\\n"),
+            1,
+        ),
+    ] {
+        let problems = build_problems(&broken);
+        assert_eq!(
+            problems.len(),
+            want,
+            "{name}: want {want} problems, got:\n{}",
+            report(&problems)
+        );
+    }
+}
+
+/// A negative control of the runtime rules: each edit breaks one rule, and exactly one problem
+/// comes back.
+#[test]
+fn runtime_rules_refuse_each_edit() {
+    let content = shipped();
+    let edit = |from: &str, to: &str| edited(&content, from, to);
+    for (name, broken) in [
+        (
+            "a shell in the runtime stage",
+            edit(
+                "# Copy the binary\n",
+                "SHELL [\"/bin/sh\", \"-c\"]\n# Copy the binary\n",
+            ),
+        ),
+        (
+            "a RUN in the runtime stage",
+            edit("# Copy the binary\n", "RUN true\n# Copy the binary\n"),
+        ),
+        (
+            "an ENV in the runtime stage",
+            edit("# Copy the binary\n", "ENV X=1\n# Copy the binary\n"),
+        ),
+        (
+            "root",
+            edit("# Copy the binary\n", "USER root\n# Copy the binary\n"),
+        ),
+        (
+            "uid 0",
+            edit("# Copy the binary\n", "USER 0:0\n# Copy the binary\n"),
+        ),
+        ("another port", edit("EXPOSE 1883", "EXPOSE 1884")),
+        (
+            "a second port",
+            edit("EXPOSE 1883\n", "EXPOSE 1883\nEXPOSE 8883\n"),
+        ),
+        (
+            "another entrypoint",
+            edit(
+                r#"ENTRYPOINT ["/usr/local/bin/awtrix-controller"]"#,
+                r#"ENTRYPOINT ["/bin/sh"]"#,
+            ),
+        ),
+        (
+            "the runtime stage on a pinned platform",
+            edit(
+                "FROM dhi.io/static:",
+                "FROM --platform=linux/amd64 dhi.io/static:",
+            ),
+        ),
+        (
+            "another runtime base",
+            edit("FROM dhi.io/static:", "FROM dhi.io/debian-base:"),
+        ),
+        (
+            "an extra label",
+            edit(
+                "org.opencontainers.image.licenses=\"MIT\"",
+                "org.opencontainers.image.licenses=\"MIT\" extra.label=\"x\"",
+            ),
+        ),
+        (
+            "another licence",
+            edit(
+                "org.opencontainers.image.licenses=\"MIT\"",
+                "org.opencontainers.image.licenses=\"Apache-2.0\"",
+            ),
+        ),
+        (
+            "an empty description",
+            edit(
+                "org.opencontainers.image.description=\"Awtrix3 MQTT Controller\"",
+                "org.opencontainers.image.description=\"\"",
+            ),
+        ),
+        (
+            "a missing label",
+            pattern(r"(?m)^\s*org\.opencontainers\.image\.created=.*\n")
+                .replace(&content, "")
+                .into_owned(),
+        ),
+    ] {
+        assert_ne!(broken, content, "{name} changed nothing");
+        let problems = runtime_stage_problems(&broken);
+        assert_eq!(
+            problems.len(),
+            1,
+            "{name}: want one problem, got:\n{}",
+            report(&problems)
+        );
+    }
+}
+
+/// A negative control of the file, frontend and stage rules: each edit of the real Dockerfile
+/// breaks one rule, and exactly one problem comes back.
+#[test]
+fn file_frontend_and_stage_rules_refuse_each_edit() {
+    let content = shipped();
+    let edit = |from: &str, to: &str| edited(&content, from, to);
+
+    assert_eq!(
+        strings(&only_dockerfile_problems(
+            &[
+                SHIPPED_DOCKERFILE.to_owned(),
+                "deployments/docker/Dockerfile.debug".to_owned(),
+            ],
+            SHIPPED_DOCKERFILE,
+        )),
+        [
+            "the repository holds the Dockerfiles [\"deployments/docker/Dockerfile\", \
+             \"deployments/docker/Dockerfile.debug\"]; want only deployments/docker/Dockerfile"
+        ]
+    );
+
+    let syntax = dockerfile::syntax(&content).expect("the shipped Dockerfile has a frontend");
+    let unpinned = syntax
+        .split_once('@')
+        .map_or(syntax.as_str(), |(tag, _)| tag);
+    for (name, broken) in [
+        ("a frontend by tag alone", edit(&syntax, unpinned)),
+        (
+            "another frontend",
+            edit("docker/dockerfile:", "example/dockerfile:"),
+        ),
+        ("no frontend", edit(&format!("# syntax={syntax}\n"), "")),
+    ] {
+        let problems = syntax_problems(SHIPPED_DOCKERFILE, &broken, true);
+        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
+    }
+
+    for (name, broken) in [
+        (
+            "a runtime base by latest",
+            edit("FROM dhi.io/static:20250419", "FROM dhi.io/static:latest"),
+        ),
+        (
+            "a runtime base without a tag",
+            edit("FROM dhi.io/static:20250419", "FROM dhi.io/static"),
+        ),
+        (
+            "a base by tag and digest",
+            edit(
+                "FROM dhi.io/static:20250419",
+                "FROM dhi.io/static:20250419@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            ),
+        ),
+        (
+            "a variable base",
+            edit("FROM dhi.io/static:20250419", "FROM $BASE"),
+        ),
+        ("a renamed stage", edit("AS runtime", "AS final")),
+        (
+            "a third stage",
+            format!("{content}\nFROM dhi.io/static:20250419 AS extra\n"),
+        ),
+    ] {
+        let problems = stage_problems(SHIPPED_DOCKERFILE, &broken, STAGES, BasePolicy::TagOnly);
+        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
+    }
+}
+
+/// A negative control of the label-policy and platform rules: each edit of the real droast.toml
+/// and release workflow breaks one rule, and exactly that comes back.
+#[test]
+fn label_policy_and_platform_rules_refuse_each_edit() {
+    let content = shipped();
+    let droast = meta::repo().read(DROAST_CONFIG);
+    for (name, config) in [
+        (
+            "labels not strict",
+            droast.replacen("strict-labels = true", "strict-labels = false", 1),
+        ),
+        (
+            "DF074 lowered",
+            droast.replacen(
+                "[severity-overrides]\n",
+                "[severity-overrides]\nDF074 = \"warning\"\n",
+                1,
+            ),
+        ),
+        (
+            "a label droast does not require",
+            droast.replacen("\"org.opencontainers.image.licenses\" = \"spdx\"\n", "", 1),
+        ),
+    ] {
+        assert_ne!(config, droast, "{name} changed nothing");
+        let problems = label_policy_problems(SHIPPED_DOCKERFILE, &content, DROAST_CONFIG, &config);
+        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
+    }
+
+    let workflows = workflows();
+    let release = workflows
+        .iter()
+        .position(|(file, _)| file == RELEASE_WORKFLOW)
+        .unwrap_or_else(|| panic!("no {RELEASE_WORKFLOW}"));
+    let mut broken = workflows.clone();
+    broken[release].1 = edited(
+        &broken[release].1,
+        &format!("PLATFORMS: {WANT_PLATFORMS}"),
+        "PLATFORMS: linux/amd64",
+    );
+    assert_eq!(
+        platform_problems(
+            &broken,
+            RELEASE_WORKFLOW,
+            WANT_PLATFORMS,
+            FORBIDDEN_PLATFORMS
+        )
+        .len(),
+        1,
+        "one platform"
+    );
+    broken[release].1 = edited(
+        &workflows[release].1,
+        &format!("PLATFORMS: {WANT_PLATFORMS}"),
+        "PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7",
+    );
+    assert_eq!(
+        platform_problems(
+            &broken,
+            RELEASE_WORKFLOW,
+            WANT_PLATFORMS,
+            FORBIDDEN_PLATFORMS
+        )
+        .len(),
+        2,
+        "a third platform, which is also a forbidden one"
     );
 }
 
@@ -403,14 +792,21 @@ fn parse_rejects_what_the_assertions_must_not_miss() {
     const DIGEST: &str = "@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     for (name, image) in [
-        ("no tag", "dhi.io/static"),
-        ("latest", "dhi.io/static:latest"),
-        ("a variable tag", "dhi.io/rust:${RUST_LINE}-debian13-dev"),
-        ("a variable image", "$BASE"),
-        ("a stage name, not a ref", "build"),
+        ("no tag", "dhi.io/static".to_owned()),
+        ("latest", "dhi.io/static:latest".to_owned()),
+        (
+            "a variable tag",
+            "dhi.io/rust:${RUST_LINE}-debian13-dev".to_owned(),
+        ),
+        ("a variable image", "$BASE".to_owned()),
+        ("a stage name, not a ref", "build".to_owned()),
+        (
+            "a tag and a digest",
+            format!("dhi.io/static:20250419{DIGEST}"),
+        ),
     ] {
         assert!(
-            !dockerfile::tag_pinned(image),
+            !dockerfile::tag_pinned(&image),
             "{name} ({image:?}) passes as tag-pinned"
         );
     }
@@ -464,8 +860,14 @@ fn parse_rejects_what_the_assertions_must_not_miss() {
         );
     }
 
-    assert!(
-        dockerfile::parse("FROM a:1\nRUN echo \\\n").is_err(),
-        "a file ending inside a continuation parsed"
-    );
+    for (name, content) in [
+        (
+            "a file ending inside a continuation",
+            "FROM a:1\nRUN echo \\\n",
+        ),
+        ("another escape character", "# escape=`\nFROM a:1\n"),
+        ("a heredoc", "FROM a:1\nRUN <<EOF\necho\nEOF\n"),
+    ] {
+        assert!(dockerfile::parse(content).is_err(), "{name} parsed");
+    }
 }

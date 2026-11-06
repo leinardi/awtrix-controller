@@ -22,323 +22,214 @@
  * SOFTWARE.
  */
 
-//! The repository's tooling pins: one Rust line across rust-toolchain.toml, Cargo.toml, the image
-//! and every CI toolchain step; the image's toolchain patch and its musl standard libraries; one
-//! zig and one cargo-zigbuild between the image and CI; one droast and one shellcheck between
-//! the hooks and CI; and no flag that makes a gate pass on nothing.
+//! The repository's tooling pins: one Rust release across rust-toolchain.toml, Cargo.toml's line,
+//! the image's line and every CI toolchain step; the image's toolchain patch and its musl standard
+//! libraries; one zig and one cargo-zigbuild between the image and CI; one droast and one
+//! shellcheck between the hooks and CI; the rustdoc gate; and no flag that makes a gate pass on
+//! nothing. The checks are `repo_meta::toolchain`'s, `repo_meta::ci`'s and `repo_meta::vacuous`'s,
+//! with this repository's parameters; the negative controls run them on altered copies of the real
+//! files and on samples.
 
-use std::collections::BTreeMap;
+use repo_meta::ci::MAKE_COMMON_RUSTDOC;
+use repo_meta::toolchain::{
+    PinSource, RustVersion, ToolchainRef, ci_toolchain_problems, image_rust_problems, one_value,
+    rust_release, rust_version_problems, shellcheck_problems,
+};
+use repo_meta::vacuous::{AllowedFragment, VacuousFlags};
+use repo_meta::yaml::{self, Value};
+use repo_meta::{Problem, report, strings};
 
-use meta::repo;
-use regex::Regex;
-use serde_yaml_ng::Value;
-
-const RUST_TOOLCHAIN_ACTION: &str = "dtolnay/rust-toolchain";
 const DOCKERFILE: &str = "deployments/docker/Dockerfile";
+const RUST_TOOLCHAIN: &str = "rust-toolchain.toml";
 const SETUP_ZIGBUILD: &str = ".github/actions/setup-zigbuild/action.yaml";
+const SETUP_DROAST: &str = ".github/actions/setup-droast/action.yaml";
+const SETUP_SHELLCHECK: &str = ".github/actions/setup-shellcheck/action.yaml";
+const PRE_COMMIT: &str = ".pre-commit-config.yaml";
+const CI_WORKFLOW: &str = ".github/workflows/ci.yaml";
+const RELEASE_WORKFLOW: &str = ".github/workflows/release.yaml";
 
-/// Rustdoc warnings must fail local verification and the required Rust CI job.
-fn rustdoc_gate_present(fragment: &str, workflow: &str) -> bool {
-    let verify = fragment.lines().any(|line| {
-        line.starts_with("verify-rust:")
-            && line.split_whitespace().any(|target| target == "rust-doc")
-    });
-    let recipe = fragment.contains(
-        "rust-doc: ## Check the Rust documentation, warnings as errors\n\tRUSTDOCFLAGS=\"$(RUSTDOCFLAGS) -D warnings\" $(CARGO) doc --workspace $(RUST_FEATURES) --no-deps --locked\n",
-    );
-    let workflow: Value = serde_yaml_ng::from_str(workflow)
-        .unwrap_or_else(|error| panic!("parse the CI workflow: {error}"));
-    let ci = workflow
-        .get("jobs")
-        .and_then(|jobs| jobs.get("rust"))
-        .and_then(|job| job.get("steps"))
-        .and_then(Value::as_sequence)
-        .is_some_and(|steps| {
-            steps.iter().any(|step| {
-                step.get("run").and_then(Value::as_str) == Some("make rust-doc")
-                    && step.get("if").is_none()
-                    && step.get("continue-on-error").is_none()
-            })
-        });
-    verify && recipe && ci
+const ZIG_DOCKERFILE: &str = r"(?m)^ARG ZIG_VERSION=(\S+)$";
+const ZIG_ACTION: &str = r#"ZIG_VERSION:\s*"?([\d.]+)"#;
+const ZIGBUILD_DOCKERFILE: &str = r"(?m)^ARG CARGO_ZIGBUILD_VERSION=(\S+)$";
+const ZIGBUILD_ACTION: &str = r#"CARGO_ZIGBUILD_VERSION:\s*"?([\d.]+)"#;
+const DROAST_HOOK: &str =
+    r"repo: https://github\.com/immanuwell/dockerfile-roast\s+rev:\s*([\d.]+)";
+const DROAST_ACTION: &str = r#"DROAST_VERSION:\s*["']?([\d.]+)"#;
+
+/// The exact release rust-toolchain.toml pins.
+fn release() -> String {
+    rust_release(RUST_TOOLCHAIN, &meta::repo().read(RUST_TOOLCHAIN))
+        .unwrap_or_else(|problem| panic!("{problem}"))
 }
 
-#[test]
-fn rust_documentation_is_a_required_gate() {
-    assert!(rustdoc_gate_present(
-        &repo::read(".mk/rust.mk"),
-        &repo::read(".github/workflows/ci.yaml"),
-    ));
-}
-
-/// Negative controls reject gates missing from verify or CI, or allowing warnings.
-#[test]
-fn weakened_rustdoc_gates_are_refused() {
-    let fragment = repo::read(".mk/rust.mk");
-    let workflow = repo::read(".github/workflows/ci.yaml");
-    for broken in [
-        fragment.replace("rust-test rust-doc", "rust-test"),
-        fragment.replace(" -D warnings", ""),
-    ] {
-        assert!(!rustdoc_gate_present(&broken, &workflow));
-    }
-    for broken in [
-        workflow.replace("run: make rust-doc", "run: echo missing documentation gate"),
-        workflow.replace(
-            "run: make rust-doc",
-            "if: false\n        run: make rust-doc",
-        ),
-        workflow.replace(
-            "run: make rust-doc",
-            "continue-on-error: true\n        run: make rust-doc",
-        ),
-    ] {
-        assert!(!rustdoc_gate_present(&fragment, &broken));
-    }
-}
-
-fn re(pattern: &str) -> Regex {
-    Regex::new(pattern).unwrap_or_else(|error| panic!("invalid pattern {pattern}: {error}"))
-}
-
-/// One place a version is written: a file and the pattern whose first group is the version there.
-struct PinSource {
-    file: String,
-    pattern: Regex,
-}
-
-fn source(file: &str, pattern: &str) -> PinSource {
-    PinSource {
-        file: file.to_owned(),
-        pattern: re(pattern),
-    }
-}
-
-/// Fails unless every source writes the pin and all of them agree.
-fn expect_one_value(what: &str, sources: &[PinSource]) {
-    let mut found: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut problems = Vec::new();
-    for pin in sources {
-        let content = repo::read(&pin.file);
-        let mut matched = false;
-        for captures in pin.pattern.captures_iter(&content) {
-            matched = true;
-            found
-                .entry(captures[1].to_owned())
-                .or_default()
-                .push(pin.file.clone());
-        }
-        if !matched {
-            problems.push(format!(
-                "{what}: {} does not write it ({})",
-                pin.file, pin.pattern
-            ));
-        }
-    }
-    if found.len() > 1 {
-        let values: Vec<String> = found
-            .iter()
-            .map(|(value, files)| {
-                let mut files = files.clone();
-                files.dedup();
-                format!("{value} in {}", files.join(", "))
-            })
-            .collect();
-        problems.push(format!("{what} is not one value: {}", values.join("; ")));
-    }
-    assert!(problems.is_empty(), "{}", problems.join("\n"));
-}
-
-/// One step, in a workflow or a composite action, that uses an action.
-#[derive(Debug)]
-struct ActionStep {
-    file: String,
-    /// The `uses:` value without its `@ref`.
-    action: String,
-    with: BTreeMap<String, String>,
-}
-
-/// Every mapping with a `uses:` key anywhere in the document: job steps and composite action
-/// steps alike.
-fn parse_action_steps(file: &str, content: &str) -> Vec<ActionStep> {
-    fn walk(file: &str, node: &Value, steps: &mut Vec<ActionStep>) {
-        match node {
-            Value::Mapping(mapping) => {
-                if let Some(Value::String(uses)) = mapping.get("uses") {
-                    let action = uses
-                        .split_once('@')
-                        .map_or(uses.as_str(), |(action, _)| action);
-                    let with = mapping
-                        .get("with")
-                        .and_then(Value::as_mapping)
-                        .map(|inputs| {
-                            inputs
-                                .iter()
-                                .filter_map(|(key, value)| {
-                                    let value = match value {
-                                        Value::String(text) => text.clone(),
-                                        Value::Number(number) => number.to_string(),
-                                        Value::Bool(flag) => flag.to_string(),
-                                        Value::Null
-                                        | Value::Sequence(_)
-                                        | Value::Mapping(_)
-                                        | Value::Tagged(_) => return None,
-                                    };
-                                    Some((key.as_str()?.to_owned(), value))
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    steps.push(ActionStep {
-                        file: file.to_owned(),
-                        action: action.to_owned(),
-                        with,
-                    });
-                }
-                for value in mapping.values() {
-                    walk(file, value, steps);
-                }
-            }
-            Value::Sequence(sequence) => {
-                for value in sequence {
-                    walk(file, value, steps);
-                }
-            }
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Tagged(_) => {}
-        }
-    }
-
-    let document: Value =
-        serde_yaml_ng::from_str(content).unwrap_or_else(|error| panic!("parse {file}: {error}"));
-    let mut steps = Vec::new();
-    walk(file, &document, &mut steps);
-    steps
-}
-
-/// The Rust step rules: a toolchain step names an exact version, never a channel like stable,
-/// which the Rust line test would not see move.
-fn rust_pin_problems(steps: &[ActionStep]) -> Vec<String> {
-    let exact = re(r"^\d+\.\d+\.\d+$");
-    steps
-        .iter()
-        .filter(|step| step.action == RUST_TOOLCHAIN_ACTION)
-        .filter_map(|step| match step.with.get("toolchain") {
-            Some(toolchain) if exact.is_match(toolchain) => None,
-            Some(toolchain) => Some(format!(
-                "{}: {} installs {toolchain:?}; name the exact version of rust-toolchain.toml",
-                step.file, step.action
-            )),
-            None => Some(format!(
-                "{}: {} names no toolchain; name the exact version of rust-toolchain.toml",
-                step.file, step.action
-            )),
-        })
-        .collect()
-}
-
-fn github_yaml() -> Vec<String> {
-    let files = repo::files_under(".github", &[".yaml", ".yml"]);
+/// Every YAML file under .github, with its text; none is a failure, since the scans would check
+/// nothing.
+fn github_yaml() -> Vec<(String, String)> {
+    let repo = meta::repo();
+    let files = repo.files_under(".github", &[".yaml", ".yml"]);
     assert!(
         !files.is_empty(),
         "no YAML files under .github; the scan would check nothing"
     );
-    files
+    repo.read_all(&files)
 }
 
-fn github_steps() -> Vec<ActionStep> {
-    github_yaml()
+/// `files` parsed.
+fn documents(files: &[(String, String)]) -> Vec<(String, Value)> {
+    files
         .iter()
-        .flat_map(|file| parse_action_steps(file, &repo::read(file)))
+        .map(|(file, content)| {
+            let document = yaml::parse(file, content).unwrap_or_else(|problem| panic!("{problem}"));
+            (file.clone(), document)
+        })
         .collect()
 }
 
-/// Go: `TestGoLineIsOneValue`. The Rust line (major.minor) is one value across rust-toolchain.toml,
-/// the MSRV in Cargo.toml, the build stage's image tag and every CI toolchain step. The patch may
-/// differ: the image carries its own patch release, and the MSRV names no patch at all.
+/// `content` with its first `from` replaced by `to`; `from` must be there, so an edit cannot
+/// silently change nothing.
+fn edited(content: &str, from: &str, to: &str) -> String {
+    assert!(content.contains(from), "{from:?} is gone");
+    content.replacen(from, to, 1)
+}
+
+/// What is wrong with the rustdoc gate of `fragment` (make-common's rust.mk), `makefile` and the
+/// CI `workflow`.
+fn rustdoc_problems(fragment: &str, makefile: &str, workflow: &str) -> Vec<Problem> {
+    let workflow = yaml::parse(CI_WORKFLOW, workflow).unwrap_or_else(|problem| panic!("{problem}"));
+    MAKE_COMMON_RUSTDOC.problems(fragment, makefile, &workflow)
+}
+
+/// Rustdoc warnings must fail local verification (`verify-rust` runs `rust-doc`, whose recipe
+/// denies warnings over every feature) and the required Rust CI job (a `make rust-doc` step with
+/// no condition and no `continue-on-error`): `repo_meta::ci::MAKE_COMMON_RUSTDOC`.
+#[test]
+fn rust_documentation_is_a_required_gate() {
+    let repo = meta::repo();
+    let problems = rustdoc_problems(
+        &repo.read(".mk/rust.mk"),
+        &repo.read("Makefile"),
+        &repo.read(CI_WORKFLOW),
+    );
+    assert!(problems.is_empty(), "{}", report(&problems));
+}
+
+/// Negative controls reject gates missing from verify or CI, allowing warnings, or narrowed to
+/// fewer features: each edit is exactly one problem.
+#[test]
+fn weakened_rustdoc_gates_are_refused() {
+    let repo = meta::repo();
+    let fragment = repo.read(".mk/rust.mk");
+    let makefile = repo.read("Makefile");
+    let workflow = repo.read(CI_WORKFLOW);
+    for (name, fragment, makefile, workflow) in [
+        (
+            "verify without rust-doc",
+            edited(&fragment, "rust-test rust-doc", "rust-test"),
+            makefile.clone(),
+            workflow.clone(),
+        ),
+        (
+            "warnings allowed",
+            edited(
+                &fragment,
+                "RUSTDOCFLAGS=\"$(RUSTDOCFLAGS) -D warnings\"",
+                "RUSTDOCFLAGS=\"$(RUSTDOCFLAGS)\"",
+            ),
+            makefile.clone(),
+            workflow.clone(),
+        ),
+        (
+            "the features narrowed",
+            fragment.clone(),
+            format!("{makefile}\nRUST_FEATURES := --features x\n"),
+            workflow.clone(),
+        ),
+        (
+            "no CI step",
+            fragment.clone(),
+            makefile.clone(),
+            edited(
+                &workflow,
+                "run: make rust-doc",
+                "run: echo missing documentation gate",
+            ),
+        ),
+        (
+            "a CI step that never runs",
+            fragment.clone(),
+            makefile.clone(),
+            edited(
+                &workflow,
+                "run: make rust-doc",
+                "if: false\n        run: make rust-doc",
+            ),
+        ),
+        (
+            "a CI step that may fail",
+            fragment.clone(),
+            makefile.clone(),
+            edited(
+                &workflow,
+                "run: make rust-doc",
+                "continue-on-error: true\n        run: make rust-doc",
+            ),
+        ),
+    ] {
+        let problems = rustdoc_problems(&fragment, &makefile, &workflow);
+        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
+    }
+}
+
+/// Go: `TestGoLineIsOneValue`. rust-toolchain.toml pins an exact release, and the MSRV in
+/// Cargo.toml is its line (or a release of that line): the MSRV names no patch, and a consumer on
+/// an earlier patch release still builds (`RustVersion::Line`).
 #[test]
 fn rust_line_is_one_value() {
-    let mut sources = vec![
-        source(
-            "rust-toolchain.toml",
-            r#"(?m)^channel = "(\d+\.\d+)(?:\.\d+)?"$"#,
-        ),
-        source(
-            "Cargo.toml",
-            r#"(?m)^rust-version = "(\d+\.\d+)(?:\.\d+)?"$"#,
-        ),
-        source(DOCKERFILE, r"dhi\.io/rust:(\d+\.\d+)[.-]"),
-    ];
-    let mut steps = 0;
-    for file in github_yaml() {
-        if parse_action_steps(&file, &repo::read(&file))
-            .iter()
-            .any(|step| step.action == RUST_TOOLCHAIN_ACTION)
-        {
-            steps += 1;
-            sources.push(source(
-                &file,
-                r"(?m)^\s*toolchain:\s*(\d+\.\d+)(?:\.\d+)?\s*$",
-            ));
-        }
-    }
-    assert!(
-        steps > 0,
-        "no {RUST_TOOLCHAIN_ACTION} step found under .github"
+    let problems = rust_version_problems(
+        "Cargo.toml",
+        &meta::repo().read("Cargo.toml"),
+        &release(),
+        RustVersion::Line,
     );
-    expect_one_value("Rust line", &sources);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// The build stage's standard libraries are written for the image's exact toolchain: the
-/// `RUST_VERSION` argument is the version in the image tag.
+/// `dhi.io/rust` tag and `ARG RUST_VERSION` are each written once, as an exact release, and are
+/// the same release, of rust-toolchain.toml's line (the image may carry its own patch release:
+/// `RustVersion::Line`); every other `dhi.io/rust` reference has that release too.
 #[test]
 fn image_toolchain_patch_is_the_standard_library_version() {
-    let dockerfile = repo::read(DOCKERFILE);
-    let tag = re(r"dhi\.io/rust:(\d+\.\d+\.\d+)-")
-        .captures(&dockerfile)
-        .map(|captures| captures[1].to_owned());
-    let argument = re(r"(?m)^ARG RUST_VERSION=(\S+)$")
-        .captures(&dockerfile)
-        .map(|captures| captures[1].to_owned());
-    assert!(
-        tag.is_some(),
-        "the build stage's tag names no exact Rust version"
+    let problems = image_rust_problems(
+        DOCKERFILE,
+        &meta::repo().read(DOCKERFILE),
+        &release(),
+        RustVersion::Line,
     );
-    assert_eq!(
-        tag, argument,
-        "the image's Rust and the RUST_VERSION of its musl standard libraries differ"
-    );
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
-/// Go: `TestActionStepsArePinned`. Every Rust toolchain step under .github names an exact version.
+/// Go: `TestActionStepsArePinned`. Every Rust toolchain step under .github names exactly
+/// rust-toolchain.toml's release, never a channel like stable or a release without its patch,
+/// which the line rules would not see move; and some step sets up Rust, or the rule would check
+/// nothing.
 #[test]
 fn rust_toolchain_steps_are_pinned() {
-    let steps = github_steps();
-    let problems = rust_pin_problems(&steps);
-    assert!(problems.is_empty(), "{}", problems.join("\n"));
-    assert!(
-        steps
-            .iter()
-            .any(|step| step.action == RUST_TOOLCHAIN_ACTION),
-        "no {RUST_TOOLCHAIN_ACTION} step found under .github; the rule would check nothing"
-    );
+    let problems =
+        ci_toolchain_problems(&documents(&github_yaml()), &release(), ToolchainRef::Input);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestActionPinRules`, the negative control of the step rules: each unpinned form is a
-/// problem.
+/// problem, another action's toolchain input included, and no Rust step at all is a problem.
 #[test]
 fn rust_toolchain_pin_rules() {
-    let steps = parse_action_steps(
-        "sample.yaml",
-        r"jobs:
+    let sample = r"jobs:
   test:
     steps:
       - uses: dtolnay/rust-toolchain@0123456789abcdef0123456789abcdef01234567 # master
         with:
-          toolchain: 1.98.0
+          toolchain: 1.98.1
       - uses: dtolnay/rust-toolchain@0123456789abcdef0123456789abcdef01234567
         with:
           toolchain: stable
@@ -346,57 +237,180 @@ fn rust_toolchain_pin_rules() {
         with:
           toolchain: 1.98
       - uses: dtolnay/rust-toolchain@0123456789abcdef0123456789abcdef01234567
+      - uses: dtolnay/rust-toolchain@0123456789abcdef0123456789abcdef01234567
+        with:
+          toolchain: 1.97.0
       - uses: some/other-action@0123456789abcdef0123456789abcdef01234567
         with:
           toolchain: nightly
-",
+";
+    let documents = documents(&[("sample.yaml".to_owned(), sample.to_owned())]);
+    let problems = ci_toolchain_problems(&documents, "1.98.1", ToolchainRef::Input);
+    assert_eq!(
+        strings(&problems),
+        [
+            "sample.yaml: dtolnay/rust-toolchain names no toolchain, and does not read \
+             rust-toolchain.toml",
+            "sample.yaml: installs toolchain \"stable\"; it must be 1.98.1, the release of \
+             rust-toolchain.toml",
+            "sample.yaml: installs toolchain \"1.98\"; it must be 1.98.1, the release of \
+             rust-toolchain.toml",
+            "sample.yaml: installs toolchain \"1.97.0\"; it must be 1.98.1, the release of \
+             rust-toolchain.toml",
+            "sample.yaml: installs toolchain \"nightly\"; it must be 1.98.1, the release of \
+             rust-toolchain.toml",
+        ]
     );
-    assert_eq!(steps.len(), 5, "{steps:?}");
-    let problems = rust_pin_problems(&steps);
-    assert_eq!(problems.len(), 3, "{problems:#?}");
+
+    let none = self::documents(&[(
+        "none.yaml".to_owned(),
+        "jobs:\n  test:\n    steps:\n      - run: make rust-test\n".to_owned(),
+    )]);
+    assert_eq!(
+        ci_toolchain_problems(&none, "1.98.1", ToolchainRef::Input).len(),
+        1,
+        "no Rust step"
+    );
 }
 
-/// The release binaries and the image are built with the same zig.
+/// The negative control of the Rust release rules, on the real files: a channel without its
+/// patch, an MSRV of another line, and an image whose standard libraries or toolchain are another
+/// release's are each refused with exactly one problem.
 #[test]
-fn zig_is_one_version() {
-    expect_one_value(
+fn rust_release_rules_refuse_each_edit() {
+    let repo = meta::repo();
+    let release = release();
+    let line = release
+        .rsplit_once('.')
+        .map_or(release.as_str(), |(line, _)| line);
+
+    let toolchain = repo.read(RUST_TOOLCHAIN);
+    let channel = format!("channel = \"{release}\"");
+    for broken in [
+        edited(&toolchain, &channel, &format!("channel = \"{line}\"")),
+        edited(&toolchain, &channel, "channel = \"stable\""),
+    ] {
+        assert!(rust_release(RUST_TOOLCHAIN, &broken).is_err(), "{broken}");
+    }
+
+    let manifest = repo.read("Cargo.toml");
+    let msrv = format!("rust-version = \"{line}\"");
+    for broken in [
+        edited(&manifest, &msrv, "rust-version = \"1.97\""),
+        edited(&manifest, &msrv, "rust-version = \"1.97.0\""),
+    ] {
+        let problems = rust_version_problems("Cargo.toml", &broken, &release, RustVersion::Line);
+        assert_eq!(problems.len(), 1, "{}", report(&problems));
+    }
+
+    let dockerfile = repo.read(DOCKERFILE);
+    let argument = format!("ARG RUST_VERSION={release}\n");
+    for (name, broken, want) in [
+        (
+            "standard libraries of another patch",
+            edited(
+                &dockerfile,
+                &argument,
+                &format!("ARG RUST_VERSION={line}.99\n"),
+            ),
+            1,
+        ),
+        (
+            "an image of another line",
+            edited(
+                &edited(&dockerfile, &argument, "ARG RUST_VERSION=1.97.0\n"),
+                &format!("dhi.io/rust:{release}-"),
+                "dhi.io/rust:1.97.0-",
+            ),
+            1,
+        ),
+        (
+            "a second RUST_VERSION",
+            edited(&dockerfile, &argument, &format!("{argument}{argument}")),
+            1,
+        ),
+    ] {
+        let problems = image_rust_problems(DOCKERFILE, &broken, &release, RustVersion::Line);
+        assert_eq!(problems.len(), want, "{name}: {}", report(&problems));
+    }
+}
+
+/// The pin sources of the zig, cargo-zigbuild and droast rules, with `edit` applied to the
+/// content of each.
+fn pin_problems(edit: impl Fn(&str, String) -> String) -> Vec<Problem> {
+    let repo = meta::repo();
+    let source =
+        |file: &str, pattern: &str| PinSource::new(file, &edit(file, repo.read(file)), pattern);
+    let mut problems = one_value(
         "zig",
         &[
-            source(DOCKERFILE, r"(?m)^ARG ZIG_VERSION=(\S+)$"),
-            source(SETUP_ZIGBUILD, r#"ZIG_VERSION:\s*"?([\d.]+)"#),
+            source(DOCKERFILE, ZIG_DOCKERFILE),
+            source(SETUP_ZIGBUILD, ZIG_ACTION),
         ],
+        &[],
     );
-}
-
-/// The release binaries and the image are built with the same cargo-zigbuild.
-#[test]
-fn cargo_zigbuild_is_one_version() {
-    expect_one_value(
+    problems.extend(one_value(
         "cargo-zigbuild",
         &[
-            source(DOCKERFILE, r"(?m)^ARG CARGO_ZIGBUILD_VERSION=(\S+)$"),
-            source(SETUP_ZIGBUILD, r#"CARGO_ZIGBUILD_VERSION:\s*"?([\d.]+)"#),
+            source(DOCKERFILE, ZIGBUILD_DOCKERFILE),
+            source(SETUP_ZIGBUILD, ZIGBUILD_ACTION),
         ],
-    );
-}
-
-/// The meta crate's Dockerfile test runs the droast CI installs; it must be the release the
-/// pre-commit hook builds from source, whose rev Dependabot moves.
-#[test]
-fn droast_is_one_version() {
-    expect_one_value(
+        &[],
+    ));
+    problems.extend(one_value(
         "droast",
         &[
-            source(
-                ".pre-commit-config.yaml",
-                r"repo: https://github\.com/immanuwell/dockerfile-roast\s+rev:\s*([\d.]+)",
-            ),
-            source(
-                ".github/actions/setup-droast/action.yaml",
-                r#"DROAST_VERSION:\s*["']?([\d.]+)"#,
-            ),
+            source(PRE_COMMIT, DROAST_HOOK),
+            source(SETUP_DROAST, DROAST_ACTION),
         ],
-    );
+        &[],
+    ));
+    problems
+}
+
+/// The release binaries and the image are built with the same zig and the same cargo-zigbuild,
+/// and the meta crate's Dockerfile test runs the droast CI installs, which must be the release the
+/// pre-commit hook builds from source, whose rev Dependabot moves.
+#[test]
+fn zig_cargo_zigbuild_and_droast_are_one_version() {
+    let problems = pin_problems(|_, content| content);
+    assert!(problems.is_empty(), "{}", report(&problems));
+}
+
+/// The negative control of the pin rules: a second value, or a source that no longer writes the
+/// pin, is exactly one problem.
+#[test]
+fn pin_rules_refuse_each_edit() {
+    for (name, file, from, to) in [
+        ("zig", DOCKERFILE, "ARG ZIG_VERSION=", "ARG ZIG_VERSION=9"),
+        (
+            "zig in CI",
+            SETUP_ZIGBUILD,
+            "ZIG_VERSION:",
+            "ZIG_VERSION_GONE:",
+        ),
+        (
+            "cargo-zigbuild",
+            SETUP_ZIGBUILD,
+            "CARGO_ZIGBUILD_VERSION: \"",
+            "CARGO_ZIGBUILD_VERSION: \"9",
+        ),
+        (
+            "droast",
+            SETUP_DROAST,
+            "DROAST_VERSION:",
+            "DROAST_VERSION: 9",
+        ),
+    ] {
+        let problems = pin_problems(|path, content| {
+            if path == file {
+                edited(&content, from, to)
+            } else {
+                content
+            }
+        });
+        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
+    }
 }
 
 /// droast's required shell-linter bridge runs the shellcheck CI installs, which must be the
@@ -404,173 +418,92 @@ fn droast_is_one_version() {
 /// (v0.11.0.1), so only the first three are compared.
 #[test]
 fn shellcheck_is_one_version() {
-    expect_one_value(
-        "shellcheck",
-        &[
-            source(
-                ".pre-commit-config.yaml",
-                r"repo: https://github\.com/shellcheck-py/shellcheck-py\s+rev:\s*(v\d+\.\d+\.\d+)",
-            ),
-            source(
-                ".github/actions/setup-shellcheck/action.yaml",
-                r#"SHELLCHECK_VERSION:\s*["']?(v\d+\.\d+\.\d+)"#,
-            ),
-        ],
+    let repo = meta::repo();
+    let problems = shellcheck_problems(
+        PRE_COMMIT,
+        &repo.read(PRE_COMMIT),
+        SETUP_SHELLCHECK,
+        &repo.read(SETUP_SHELLCHECK),
+    );
+    assert!(problems.is_empty(), "{}", report(&problems));
+    let action = edited(
+        &repo.read(SETUP_SHELLCHECK),
+        "SHELLCHECK_VERSION:",
+        "SHELLCHECK_VERSION: v9",
+    );
+    assert_eq!(
+        shellcheck_problems(
+            PRE_COMMIT,
+            &repo.read(PRE_COMMIT),
+            SETUP_SHELLCHECK,
+            &action
+        )
+        .len(),
+        1,
+        "another shellcheck in CI"
     );
 }
 
-/// A flag that turns a gate with nothing to check, or a failing one, into a pass.
-struct VacuousFlag {
-    name: &'static str,
-    pattern: Regex,
+/// The flags no gate may carry: the core set, the Rust set with the rule that clippy denies
+/// warnings, and the JavaScript set this repository's scan has always held.
+fn vacuous_flags() -> VacuousFlags {
+    VacuousFlags::core().with_rust().with_javascript()
 }
 
-fn vacuous_flags() -> Vec<VacuousFlag> {
-    [
-        ("--passWithNoTests", r"--pass-?[Ww]ith-?[Nn]o-?[Tt]ests"),
-        (
-            "--no-error-on-unmatched-pattern",
-            r"--no-error-on-unmatched-pattern",
-        ),
-        ("|| true", r"\|\|\s*(true\b|:(\s|;|$)|exit\s+0\b)"),
-        ("make's - recipe prefix", r"^\t[@+]*-"),
-        (".IGNORE", r"^\.IGNORE\b"),
-        (
-            "make --ignore-errors",
-            r"\$\(MAKE\).*\s(-[a-zA-Z]*i[a-zA-Z]*|--ignore-errors)\b",
-        ),
-        ("continue-on-error", r"continue-on-error"),
-        (
-            "if: false",
-            r#"\bif:\s*(["']?false["']?\s*$|["']?\$\{\{\s*false\s*\}\}["']?)"#,
-        ),
-    ]
-    .into_iter()
-    .map(|(name, pattern)| VacuousFlag {
-        name,
-        pattern: re(pattern),
-    })
-    .collect()
-}
-
-/// A vacuous-looking line that is not one: the file it may appear in, and the pattern the line
-/// must match.
-struct AllowedHit {
-    file: &'static str,
-    pattern: Regex,
-    reason: &'static str,
-}
-
-/// The reviewed exceptions. Each must still match at least one line, so an entry cannot outlive
-/// the code it excuses and quietly cover a new line later.
-fn allowed_hits() -> Vec<AllowedHit> {
-    vec![
-        // grep exits 1 when it selects nothing, and "no release tag yet" is an answer here, not a
-        // failure; the brace group confines the || true to that one grep under pipefail.
-        AllowedHit {
-            file: ".github/workflows/release.yaml",
-            pattern: re(r#"\{ grep -E "\$RELEASE_TAG_REGEX" \|\| true; \}"#),
-            reason: "a tag filter that may select nothing",
-        },
-        // The first release has no HEAD^ history with tags; the empty answer means "no previous
-        // release", which the step handles.
-        AllowedHit {
-            file: ".github/workflows/release.yaml",
-            pattern: re(r#"\{ git tag --merged "HEAD\^" 2>/dev/null \|\| true; \}"#),
-            reason: "the previous release lookup on a first release",
-        },
-    ]
-}
-
-struct VacuousHit {
-    number: usize,
-    flag: &'static str,
-    line: String,
-}
-
-fn vacuous_hits(flags: &[VacuousFlag], content: &str) -> Vec<VacuousHit> {
-    content
-        .split('\n')
-        .enumerate()
-        .flat_map(|(index, line)| {
-            flags
-                .iter()
-                .filter(|flag| flag.pattern.is_match(line))
-                .map(move |flag| VacuousHit {
-                    number: index + 1,
-                    flag: flag.name,
-                    line: line.trim().to_owned(),
-                })
-        })
-        .collect()
-}
-
-/// The index of the allowed hit that excuses `line` in `file`. The excused construct must be the
-/// line's only flag: an `|| true` elsewhere on the same line stays a finding.
-fn allowed_index(
-    flags: &[VacuousFlag],
-    allowed: &[AllowedHit],
-    file: &str,
-    line: &str,
-) -> Option<usize> {
-    allowed.iter().position(|entry| {
-        entry.file == file
-            && entry.pattern.is_match(line)
-            && vacuous_hits(flags, &entry.pattern.replace_all(line, "")).is_empty()
-    })
-}
+/// The reviewed exceptions, each an exact fragment of one file. Each must still match at least
+/// one line, so an entry cannot outlive the code it excuses and quietly cover a new line later.
+const ALLOWED: &[AllowedFragment<'static>] = &[
+    // grep exits 1 when it selects nothing, and "no release tag yet" is an answer here, not a
+    // failure; the brace group confines the || true to that one grep under pipefail.
+    AllowedFragment {
+        file: RELEASE_WORKFLOW,
+        fragment: r#"{ grep -E "$RELEASE_TAG_REGEX" || true; }"#,
+        reason: "a tag filter that may select nothing",
+    },
+    // The first release has no HEAD^ history with tags; the empty answer means "no previous
+    // release", which the step handles.
+    AllowedFragment {
+        file: RELEASE_WORKFLOW,
+        fragment: r#"{ git tag --merged "HEAD^" 2>/dev/null || true; }"#,
+        reason: "the previous release lookup on a first release",
+    },
+];
 
 /// Go: `TestNoVacuousFlags`. Scans the files that define gates: the Makefile and every make
 /// fragment, the pre-commit configuration and every YAML file under .github, the workflows
 /// included.
 #[test]
 fn no_vacuous_flags() {
-    let flags = vacuous_flags();
-    let allowed = allowed_hits();
-    let fragments = repo::files_under(".mk", &[".mk"]);
+    let repo = meta::repo();
+    let fragments = repo.files_under(".mk", &[".mk"]);
     assert!(
         !fragments.is_empty(),
         "no make fragments found under .mk/; the scan would check nothing"
     );
-    let mut files = vec!["Makefile".to_owned(), ".pre-commit-config.yaml".to_owned()];
-    files.extend(fragments);
+    let mut files = repo.read_all(&["Makefile".to_owned(), PRE_COMMIT.to_owned()]);
+    files.extend(repo.read_all(&fragments));
     files.extend(github_yaml());
-
-    let mut used = vec![false; allowed.len()];
-    let mut problems = Vec::new();
-    for file in &files {
-        for hit in vacuous_hits(&flags, &repo::read(file)) {
-            match allowed_index(&flags, &allowed, file, &hit.line) {
-                Some(index) => used[index] = true,
-                None => problems.push(format!("{file}:{}: {}: {}", hit.number, hit.flag, hit.line)),
-            }
-        }
-    }
-    for (entry, used) in allowed.iter().zip(used) {
-        if !used {
-            problems.push(format!(
-                "the allowed hit {:?} in {} matches no line; remove it",
-                entry.reason, entry.file
-            ));
-        }
-    }
-    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    let problems = vacuous_flags().problems(&files, ALLOWED);
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestVacuousFlagsAreRecognized`, the negative control: each flag, written as a gate would
-/// carry it, is found, and an allowed pattern excuses only its own file.
+/// carry it, is found, and an allowed fragment excuses only itself, in its own file.
 #[test]
 fn vacuous_flags_are_recognized() {
     let flags = vacuous_flags();
-    let allowed = allowed_hits();
+    let hits = |file: &str, line: &str| {
+        let mut used = vec![false; ALLOWED.len()];
+        flags.hits(file, line, ALLOWED, &mut used).len()
+    };
     for sample in [
         r#""test": "vitest run --passWithNoTests""#,
         r#""lint": "eslint src --no-error-on-unmatched-pattern""#,
-        "\tcargo clippy || true",
-        "\tcargo clippy ||:",
-        "\tcargo clippy || exit 0",
-        "\t-cargo clippy",
-        "\t@-cargo clippy",
+        "\tcargo clippy -- -D warnings || true",
+        "\tcargo clippy -- -D warnings ||:",
+        "\tcargo clippy -- -D warnings || exit 0",
+        "\t-cargo test",
+        "\t@-cargo test",
         ".IGNORE: rust-clippy",
         "\t$(MAKE) -i rust-test",
         "\t$(MAKE) --ignore-errors rust-test",
@@ -579,42 +512,32 @@ fn vacuous_flags_are_recognized() {
         "    if: ${{ false }}",
         "    if: 'false'",
         "    if: \"${{ false }}\"",
+        "\tcargo clippy --workspace",
+        "\tcargo test --no-run",
+        "\t$(CARGO) test -- --skip broker",
     ] {
-        assert!(
-            !vacuous_hits(&flags, sample).is_empty(),
-            "no vacuous flag found in {sample:?}"
-        );
+        assert_eq!(hits("Makefile", sample), 1, "{sample:?}");
     }
 
     let release_filter = r#"{ grep -E "$RELEASE_TAG_REGEX" || true; } | sort -V | tail -n1"#;
-    assert!(
-        allowed_index(
-            &flags,
-            &allowed,
-            ".github/workflows/release.yaml",
-            release_filter
-        )
-        .is_some(),
+    assert_eq!(
+        hits(RELEASE_WORKFLOW, release_filter),
+        0,
         "the release tag filter is not allowed in release.yaml"
     );
-    assert!(
-        allowed_index(
-            &flags,
-            &allowed,
-            ".github/workflows/ci.yaml",
-            release_filter
-        )
-        .is_none(),
+    assert_eq!(
+        hits(CI_WORKFLOW, release_filter),
+        1,
         "the release tag filter is allowed outside release.yaml"
     );
-    assert!(
-        allowed_index(
-            &flags,
-            &allowed,
-            ".github/workflows/release.yaml",
-            "make rust-test || true"
-        )
-        .is_none(),
+    assert_eq!(
+        hits(RELEASE_WORKFLOW, &format!("{release_filter} || true")),
+        1,
+        "a second || true beside the allowed one is allowed in release.yaml"
+    );
+    assert_eq!(
+        hits(RELEASE_WORKFLOW, "make rust-test || true"),
+        1,
         "an unrelated || true is allowed in release.yaml"
     );
 }
