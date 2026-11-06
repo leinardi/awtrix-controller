@@ -10,7 +10,7 @@ authors = ["Roberto Leinardi"]
 repository = "https://github.com/leinardi/awtrix-controller"
 
 # The crates shared with the other Rust services, from leinardi/rust-common: a git dependency
-# pinned by release tag (`tag`). `version` tracks the crates' package version, not the tag; it keeps
+# pinned by release tag (`tag`), with `version` the tag's `<major>.<minor>`; `version` keeps
 # cargo-deny's `wildcards = "deny"` satisfied and makes cargo refuse a checkout of another version.
 # Moving the pin: change the `tag` on every line, run `cargo fetch` (not `cargo update -p`); `git
 # diff Cargo.lock` must touch only rust-common lines (AGENTS.md, "Shared crates"). Each member
@@ -19,11 +19,11 @@ repository = "https://github.com/leinardi/awtrix-controller"
 # `path = "../rust-common/crates/<name>"`, never in a release or image build (the image's build
 # context does not hold them).
 [workspace.dependencies]
-go-clock = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.0", version = "0.1" }
-repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.0", version = "0.1" }
-service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.0", version = "0.1" }
-testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.0", version = "0.1" }
-tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.0", version = "0.1" }
+go-clock = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
+repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
+service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
+testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
+tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
 
 # The lint set lives here once. Every member opts in with `[lints] workspace = true` (a member does
 # not inherit it otherwise, and the meta crate asserts that each one does), and every clippy run is
