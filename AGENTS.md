@@ -121,8 +121,10 @@ its own features.
   its code into this repository. A fix to shared code lands in rust-common first, then reaches here
   by moving the `tag`.
 - **Moving the `tag`** needs the network: change it on all five lines (nothing checks that they
-  agree; a partial move locks two tags side by side), then run `cargo fetch` before the `--locked`
-  make targets, which otherwise refuse the stale lock. The manifest change is what makes cargo
+  agree; a partial move locks two tags side by side), and `version` with it when the tag's
+  `<major>.<minor>` moves (a `v0.3.0` checkout does not resolve against `version = "0.2"`; a
+  `v0.2.x` one does), then run `cargo fetch` before the `--locked` make targets, which otherwise
+  refuse the stale lock. The manifest change is what makes cargo
   re-resolve the git source; `cargo fetch` changes nothing else, whereas `cargo update -p <crate>`
   also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
   only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock` changes together. `deny.toml`

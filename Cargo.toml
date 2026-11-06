@@ -12,12 +12,13 @@ repository = "https://github.com/leinardi/awtrix-controller"
 # The crates shared with the other Rust services, from leinardi/rust-common: a git dependency
 # pinned by release tag (`tag`), with `version` the tag's `<major>.<minor>`; `version` keeps
 # cargo-deny's `wildcards = "deny"` satisfied and makes cargo refuse a checkout of another version.
-# Moving the pin: change the `tag` on every line, run `cargo fetch` (not `cargo update -p`); `git
-# diff Cargo.lock` must touch only rust-common lines (AGENTS.md, "Shared crates"). Each member
-# opts in with `<name>.workspace = true` and its own features. Local work on both repositories: an
-# uncommitted `[patch."https://github.com/leinardi/rust-common"]` table naming each crate with
-# `path = "../rust-common/crates/<name>"`, never in a release or image build (the image's build
-# context does not hold them).
+# Moving the pin: change the `tag` on every line (and `version`, when the tag's `<major>.<minor>`
+# moves: cargo refuses a v0.3.0 checkout against `version = "0.2"`), run `cargo fetch` (not
+# `cargo update -p`); `git diff Cargo.lock` must touch only rust-common lines (AGENTS.md, "Shared
+# crates"). Each member opts in with `<name>.workspace = true` and its own features. Local work on
+# both repositories: an uncommitted `[patch."https://github.com/leinardi/rust-common"]` table
+# naming each crate with `path = "../rust-common/crates/<name>"`, never in a release or image build
+# (the image's build context does not hold them).
 [workspace.dependencies]
 go-clock = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
 repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v0.2.1", version = "0.2" }
