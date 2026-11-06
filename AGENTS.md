@@ -113,8 +113,8 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v0.3.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "0.3"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+tag (`tag = "v0.4.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
+`version = "0.4"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
