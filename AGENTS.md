@@ -12,7 +12,7 @@ configuration keys, CLI flags and behaviour.
 ## Common commands
 
 ```bash
-make rust-build    # cargo build --workspace --all-targets --all-features --locked, stamped
+make rust-build    # cargo build --workspace --all-targets --all-features --locked, unstamped
 make rust-test     # cargo test --workspace --locked (the meta-tests in meta/ included)
 make rust-fmt      # cargo fmt --all; rust-fmt-check only checks
 make rust-clippy   # cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
@@ -113,8 +113,8 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v0.2.1"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "0.2"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+tag (`tag = "v0.3.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
+`version = "0.3"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
@@ -122,8 +122,8 @@ its own features.
   by moving the `tag`.
 - **Moving the `tag`** needs the network: change it on all five lines (nothing checks that they
   agree; a partial move locks two tags side by side), and `version` with it when the tag's
-  `<major>.<minor>` moves (a `v0.3.0` checkout does not resolve against `version = "0.2"`; a
-  `v0.2.x` one does), then run `cargo fetch` before the `--locked` make targets, which otherwise
+  `<major>.<minor>` moves (a `v0.4.0` checkout does not resolve against `version = "0.3"`; a
+  `v0.3.x` one does), then run `cargo fetch` before the `--locked` make targets, which otherwise
   refuse the stale lock. The manifest change is what makes cargo
   re-resolve the git source; `cargo fetch` changes nothing else, whereas `cargo update -p <crate>`
   also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
@@ -211,8 +211,9 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 - **Version strings:** `src/version.rs` reads `AWTRIX_CONTROLLER_VERSION`,
   `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` at compile time (service-kit's
   `buildinfo!`), falling back to `dev`, `none` and `unknown` when unset (an empty stamp stays
-  empty). `make rust-build`, `make rust-dist` and `make rust-run` set
-  them from git (`RUST_STAMP_PREFIX` in the Makefile, for make-common's `.mk/rust.mk`), and the
+  empty). `make rust-dist` and `make rust-run` set them from git, the date from HEAD's commit
+  (`RUST_STAMP_PREFIX` and `BUILD_DATE` in the Makefile, for make-common's `.mk/rust.mk`;
+  `make rust-build` builds unstamped, as the tests do, through `RUST_BUILD_ENV :=`), and the
   Dockerfile and the release workflow from the release version.
 - Every Rust and shell file, the Dockerfile, the Makefile and the repo-local `.mk` fragments carry
   the MIT license header, with the year of the file's first commit (copy it from any Rust or shell
