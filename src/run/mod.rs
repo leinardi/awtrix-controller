@@ -81,24 +81,16 @@ pub struct Options {
     pub registry: Option<Arc<Registry>>,
 }
 
-/// How a run ended.
-#[derive(Debug)]
-pub struct Exit {
-    /// The process exit code: 0 after a clean shutdown, 1 for a configuration or flag error, 2
-    /// when a component cannot start or its shared state becomes unusable.
-    pub code: ExitCode,
-    /// When the shutdown started, plus [`SHUTDOWN_BUDGET`]: the time by which the caller must
-    /// have ended its runtime too. `None` when the run never got that far.
-    pub deadline: Option<Instant>,
-}
+/// How a run ended (service-kit's `Exit`, which `run_until_exit` takes): `code` is the process
+/// exit code, 0 after a clean shutdown, 1 for a configuration or flag error, 2 when a component
+/// cannot start or its shared state becomes unusable; `deadline` is when the shutdown started,
+/// plus [`SHUTDOWN_BUDGET`], the time by which the caller must have ended its runtime too, and
+/// `None` when the run never got that far.
+pub type Exit = service_kit::runtime::Exit<ExitCode>;
 
-impl Exit {
-    fn early(code: u8) -> Self {
-        Self {
-            code: ExitCode::from(code),
-            deadline: None,
-        }
-    }
+/// An exit before the shutdown started, with no deadline.
+fn early(code: u8) -> Exit {
+    Exit::early(ExitCode::from(code))
 }
 
 /// Runs the controller with `args` (the program name excluded) until SIGINT, SIGTERM or
@@ -134,7 +126,7 @@ where
             io::stderr(),
             "error: {given}: the single-dash long form is not accepted; use {meant}"
         );
-        return Exit::early(EXIT_CONFIG);
+        return early(EXIT_CONFIG);
     }
     let program = OsString::from("awtrix-controller");
     let parsed = Cli::try_parse_from(std::iter::once(program).chain(args));
@@ -144,7 +136,7 @@ where
             // Help goes to stdout and is a success; an error goes to stderr. A failed write
             // leaves nowhere to report it.
             let _ = parse_error.print();
-            return Exit::early(if parse_error.use_stderr() {
+            return early(if parse_error.use_stderr() {
                 EXIT_CONFIG
             } else {
                 0
@@ -154,7 +146,7 @@ where
 
     if cli.version == Some(true) {
         let _ = writeln!(io::stdout(), "{VERSION} {COMMIT} {DATE}");
-        return Exit::early(0);
+        return early(0);
     }
 
     let config_path = cli
@@ -186,13 +178,13 @@ where
                 error = %load_error,
                 "failed to load configuration"
             );
-            return Exit::early(EXIT_CONFIG);
+            return early(EXIT_CONFIG);
         }
     };
     debug!(config = ?config.debug_view(), "config: effective configuration loaded");
 
     let Some(zone) = time_zone(&config) else {
-        return Exit::early(EXIT_CONFIG);
+        return early(EXIT_CONFIG);
     };
 
     start(
@@ -230,13 +222,13 @@ async fn start(
     let (events, mut queued) = mpsc::unbounded_channel();
 
     let Some(builder) = start_modes(config, &zone, &clock, &scheduler, &events) else {
-        return Exit::early(EXIT_COMPONENT);
+        return early(EXIT_COMPONENT);
     };
     let broker = match start_broker(config, &registry, &events, &failures).await {
         Ok(broker) => broker,
         Err(broker_error) => {
             error!(error = %broker_error, "failed to create MQTT broker");
-            return Exit::early(EXIT_COMPONENT);
+            return early(EXIT_COMPONENT);
         }
     };
     let devices = Arc::new(Devices {

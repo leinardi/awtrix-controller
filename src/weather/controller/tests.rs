@@ -26,10 +26,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::mpsc;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::testing::Capture;
 
 use super::*;
 use crate::clock::TokioClock;
-use crate::test_support::Captured;
+use crate::test_support;
 
 fn instant(text: &str) -> Timestamp {
     text.parse().expect("timestamp")
@@ -590,8 +591,8 @@ async fn failed_fetch_clears_the_overlay() {
 /// A fetch that does not answer within the poll timeout counts as failed.
 #[tokio::test(start_paused = true)]
 async fn hung_fetch_times_out() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let responses = vec![Response::Points(points(95)), Response::Hang];
     let mut harness = harness(config(), responses, &[], "UTC");
@@ -631,8 +632,8 @@ async fn cancelling_abandons_the_fetch_in_flight() {
 /// A device that cannot be reached is logged; the others still get the warning.
 #[tokio::test(start_paused = true)]
 async fn publish_failure_is_logged_and_skipped() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let mut harness = harness(
         config(),
@@ -654,8 +655,8 @@ async fn publish_failure_is_logged_and_skipped() {
 /// An empty time zone is UTC, with a warning, as in Go.
 #[tokio::test(start_paused = true)]
 async fn empty_timezone_is_utc() {
-    let captured = Captured::default();
-    let _guard = captured.install(LevelFilter::WARN);
+    let captured = Capture::default();
+    let _guard = test_support::install(&captured, LevelFilter::WARN);
 
     let mut harness = harness(
         config(),

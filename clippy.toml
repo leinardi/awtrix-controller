@@ -8,8 +8,9 @@ allow-expect-in-tests = true
 allowed-idents-below-min-chars = ["x", "y"]
 
 # Scheduling and window code reads the time from the injected clock, so the tests can drive it.
-# Only the clock module and the debug weather simulation read the wall clock, each through an
-# #[expect(clippy::disallowed_methods, reason = "...")].
+# Only go-clock's SystemClock (re-exported by src/clock, outside this lint's reach) and the debug
+# weather simulation, through an #[expect(clippy::disallowed_methods, reason = "...")], read the
+# wall clock.
 disallowed-methods = [
     { path = "jiff::Timestamp::now", reason = "read the time from the injected Clock" },
     { path = "jiff::Zoned::now", reason = "read the time from the injected Clock" },

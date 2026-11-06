@@ -145,8 +145,9 @@ every connected
   forward by its length, a fold takes the earlier instant); another conversion is a finding.
   Monthly days past the month's end clamp to its last day, `02-29` to February 28 outside leap
   years. Fire times are strictly after `from`.
-- No wall clock outside `src/clock` and the debug weather simulation (`clippy.toml`
-  `disallowed-methods`); a new `#[expect(clippy::disallowed_methods)]` elsewhere is a finding.
+- No wall clock outside `go-clock`'s `SystemClock` (re-exported by `src/clock`) and the debug
+  weather simulation (`clippy.toml` `disallowed-methods`); a new
+  `#[expect(clippy::disallowed_methods)]` elsewhere is a finding.
 - With no `timezone`, day/night, energy saving and scheduled notifications use the system zone
   but the weather controller uses `UTC`, as Go did.
 - Polar night or midnight sun (the sun function returns `None`) means Night and a retry at the
@@ -192,8 +193,9 @@ publish failure, or convert it to empty/default state without also reporting the
 
 `SHUTDOWN_BUDGET` (2 s) runs from the signal: the controllers' token and the scheduler are
 cancelled, the broker stops accepting and kicks every session concurrently under the remaining
-time, and `main` ends its hand-built runtime with `shutdown_timeout(remaining)`. A new step that
-waits on its own grace period, awaits a fetch, or kicks sessions one by one breaks the budget.
+time, and `main` ends the runtime within what is left of the run's deadline (service-kit's
+`run_until_exit`, which calls `shutdown_timeout(remaining)`). A new step that waits on its own
+grace period, awaits a fetch, or kicks sessions one by one breaks the budget.
 
 ### Image, release and CI
 
@@ -280,11 +282,12 @@ anywhere (the workspace lints deny it in Rust code). The same holds for a lint r
 
 ### (d) Cross-file duplication
 
-Before accepting a new helper, search `src/**`, `tests/**` and `meta/src/**` for the one that
-already exists, by *behavior*. Check the clock and `resolve_local`, the scheduler,
-the next-occurrence helpers, the energy-saving
-window, the registry, settings builder and push, the notification publisher, the log capture,
-and the broker and run test harnesses.
+Before accepting a new helper, search `src/**`, `tests/**`, `meta/src/**` and the rust-common
+crates this repository uses (AGENTS.md, "Shared crates") for the one that already exists, by
+*behavior*; a copy of shared code instead of a parameter of it is a finding. Check the clock and
+`resolve_local`, the scheduler, the next-occurrence helpers, the energy-saving window, the
+registry, settings builder and push, the notification publisher, the log capture, and the broker
+and run test harnesses.
 
 ### (e) Docs drift
 

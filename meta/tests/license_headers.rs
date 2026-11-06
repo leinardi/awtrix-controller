@@ -23,15 +23,13 @@
  */
 
 //! Drives scripts/check-license-headers.sh: on this repository, and on scratch repositories that
-//! hold each kind of file it must reject or let through.
+//! hold each kind of file it must reject or let through. The harness is
+//! `repo_meta::scratch::HeaderHarness`: its scratch repositories run git and the checker with an
+//! isolated git environment, so under the commit hook they never touch the index being committed,
+//! and it refuses a set of cases that lacks one to accept or one to reject.
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
-use std::process::{Command, Output};
-
-use meta::{gitenv, repo};
+use repo_meta::report;
+use repo_meta::scratch::{HeaderCase, HeaderHarness};
 
 const SCRIPT_PATH: &str = "scripts/check-license-headers.sh";
 
@@ -93,109 +91,35 @@ fn hash_header() -> String {
     comment("#", "# ", "#", "#")
 }
 
-fn run_git(directory: &Path, args: &[&str]) {
-    let output = gitenv::isolate(Command::new("git").args(args).current_dir(directory))
-        .output()
-        .unwrap_or_else(|error| panic!("run git {args:?}: {error}"));
-    assert!(
-        output.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-/// A git repository holding the checker, a Makefile (unless the case brings its own) and `files`,
-/// every one of them added except those under [`UNTRACKED_PREFIX`].
-fn scratch_repo(files: &BTreeMap<&str, String>) -> tempfile::TempDir {
-    let scratch = tempfile::tempdir().unwrap_or_else(|error| panic!("scratch directory: {error}"));
-    let directory = scratch.path();
-    let mut files = files.clone();
-    files.insert(SCRIPT_PATH, repo::read(SCRIPT_PATH));
-    files
-        .entry("Makefile")
-        .or_insert_with(|| hash_header() + "\nMK_COMMON_FILES := docker.mk help.mk\n");
-
-    for (name, content) in &files {
-        let path = directory.join(name);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .unwrap_or_else(|error| panic!("create the directory of {name}: {error}"));
-        }
-        fs::write(&path, content).unwrap_or_else(|error| panic!("write {name}: {error}"));
-    }
-    fs::set_permissions(
-        directory.join(SCRIPT_PATH),
-        fs::Permissions::from_mode(0o700),
-    )
-    .unwrap_or_else(|error| panic!("make the checker executable: {error}"));
-
-    run_git(directory, &["init", "--quiet"]);
-    for name in files.keys() {
-        if !name.starts_with(UNTRACKED_PREFIX) {
-            run_git(directory, &["add", "--", name]);
-        }
-    }
-    scratch
-}
-
-fn run_checker(directory: &Path) -> Output {
-    gitenv::isolate(Command::new(directory.join(SCRIPT_PATH)).current_dir(directory))
-        .output()
-        .unwrap_or_else(|error| panic!("run the checker: {error}"))
+/// Runs `check` with the checker's harness: every scratch repository holds a Makefile with the
+/// header (which the checker governs too and reads `MK_COMMON_FILES` from) unless a case brings
+/// its own, and files under [`UNTRACKED_PREFIX`] are written but never added.
+fn with_harness<R>(check: impl FnOnce(&HeaderHarness<'_>) -> R) -> R {
+    let makefile = hash_header() + "\nMK_COMMON_FILES := docker.mk help.mk\n";
+    let base_files = [("Makefile", makefile.as_str())];
+    check(&HeaderHarness {
+        script: SCRIPT_PATH,
+        base_files: &base_files,
+        untracked_prefix: UNTRACKED_PREFIX,
+    })
 }
 
 /// Go: `TestRepositoryHeaders`. The repository passes its own check. Run with the repository's
 /// own git environment: under the commit hook it names the index being committed.
 #[test]
 fn repository_headers() {
-    let output = Command::new(repo::path(SCRIPT_PATH))
-        .current_dir(repo::root())
-        .output()
-        .expect("run the checker");
-    assert!(
-        output.status.success(),
-        "the repository fails its own license header check:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let problems = with_harness(|harness| harness.check_repository(&meta::repo()));
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
-/// One scratch repository: its files, and whether the checker must accept it.
-struct HeaderCase {
-    name: &'static str,
-    files: Vec<(&'static str, String)>,
-    pass: bool,
+fn case(name: &str, files: &[(&str, &str)], pass: bool) -> HeaderCase {
+    HeaderCase::new(name, files, pass)
 }
 
-fn case(name: &'static str, files: &[(&'static str, &str)], pass: bool) -> HeaderCase {
-    HeaderCase {
-        name,
-        files: files
-            .iter()
-            .map(|(path, content)| (*path, (*content).to_owned()))
-            .collect(),
-        pass,
-    }
-}
-
-fn run_cases(cases: Vec<HeaderCase>) {
-    let mut failures = Vec::new();
-    for HeaderCase { name, files, pass } in cases {
-        let scratch = scratch_repo(&files.into_iter().collect());
-        let output = run_checker(scratch.path());
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        if pass && !output.status.success() {
-            failures.push(format!("{name}: rejected, want accepted:\n{text}"));
-        }
-        if !pass && output.status.success() {
-            failures.push(format!("{name}: accepted, want rejected:\n{text}"));
-        }
-    }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+/// Runs the cases in scratch repositories, each with the checker copied from this repository.
+fn run_cases(cases: &[HeaderCase]) {
+    let problems = with_harness(|harness| harness.run_cases(&meta::repo(), cases));
+    assert!(problems.is_empty(), "{}", report(&problems));
 }
 
 /// Go: `TestHeaderCases`, the notice itself on a Rust file: present, missing, a year range,
@@ -204,7 +128,7 @@ fn run_cases(cases: Vec<HeaderCase>) {
 fn header_cases_for_the_notice() {
     let rust = rust_header();
     let filler = "// filler\n".repeat(HEADER_WINDOW - LAST_REQUIRED_LINE);
-    run_cases(vec![
+    run_cases(&[
         case("rust file with the header", &[("src/x.rs", &rust)], true),
         case(
             "rust file without a header",
@@ -250,7 +174,7 @@ fn header_cases_for_each_file_kind() {
         "# syntax=docker/dockerfile:1.7\n\n{}FROM scratch\n",
         hash_header()
     );
-    run_cases(vec![
+    run_cases(&[
         case(
             "shell script with the header",
             &[("scripts/a.sh", &shell)],
@@ -290,10 +214,11 @@ fn header_cases_for_each_file_kind() {
 }
 
 /// Go: `TestHeaderCases`, what is never governed: untracked files, make-common's files, and
-/// Markdown, YAML and JSON.
+/// Markdown, YAML and JSON; and, as their negative control, a governed file without a header
+/// beside them, still refused.
 #[test]
 fn header_cases_for_the_exemptions() {
-    run_cases(vec![
+    run_cases(&[
         case(
             "untracked file without a header",
             &[("untracked/scratch.rs", "pub fn run() {}\n")],
@@ -328,6 +253,17 @@ fn header_cases_for_the_exemptions() {
                 ("b.json", "{}\n"),
             ],
             true,
+        ),
+        case(
+            "a tracked rust file without a header beside the exemptions",
+            &[
+                ("untracked/scratch.rs", "pub fn run() {}\n"),
+                (".mk/docker.mk", "x:\n"),
+                ("scripts/bootstrap-mk-common.sh", "#!/bin/sh\n"),
+                ("README.md", "# x\n"),
+                ("src/x.rs", "pub fn run() {}\n"),
+            ],
+            false,
         ),
     ]);
 }
