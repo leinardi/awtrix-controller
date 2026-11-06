@@ -9,9 +9,9 @@ rules, commit types. Read it before any change; memories below only add what it 
 
 ## Source map
 
-- `src/main.rs` (hand-built runtime, shutdown budget), `src/cli/` (clap flags, Go-compatible value
-  parsing, test-notification flags), `src/run/` (wiring: `run_with`/`run_with_options`, device
-  event queue, signals).
+- `src/main.rs` (service-kit's `build_runtime`/`run_until_exit`, shutdown budget), `src/cli/`
+  (clap flags, Go-compatible value parsing, test-notification flags), `src/run/` (wiring:
+  `run_with`/`run_with_options`, device event queue, signals).
 - `src/broker/` — embedded rmqtt broker on its own runtime/thread; `ControllerHook` (auth,
   connect/disconnect by `SessionKey`, publish routing). Listeners only via the `listener` helper
   (`allow_anonymous(false)`).

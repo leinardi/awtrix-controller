@@ -10,7 +10,8 @@ repeatedly bite:
   `.lock().unwrap_or_else(PoisonError::into_inner)`.
 - `print_stdout`/`print_stderr` denied: log via `tracing`, `writeln!` for `--version`.
 - `disallowed_methods`: no `Timestamp::now`/`Zoned::now`/`SystemTime::now`/`Instant::now` outside
-  `src/clock` and the weather simulation; use the injected `Clock`.
+  go-clock's `SystemClock` (re-exported by `src/clock`) and the weather simulation; use the
+  injected `Clock`.
 - pedantic: `#[must_use]` on pure fns, `# Errors` docs, identifiers in backticks in docs.
 - Public items before private ones within an `impl` (review rule, not linted).
 
@@ -20,8 +21,8 @@ Suppressions: only `#[expect(lint, reason = "...")]`, ratcheted per lint against
 not apply, not which lint fired.
 
 Tests: paused tokio clock (`start_paused = true`) + `TokioClock`; bound every wait with
-`tokio::time::timeout`; capture logs with `test_support::Captured::install`; ported tests carry
-``/// Go: `TestX` ``.
+`tokio::time::timeout`; capture logs into a `tracing_setup::testing::Capture` scoped by
+`test_support::install(&capture, level)`; ported tests carry ``/// Go: `TestX` ``.
 
 Commits: Conventional Commits with mandatory scope; type chosen by whether it should ship
 (`fix`/`feat` release, others don't); avoid words ending in `fix`/`feat` before a colon in other

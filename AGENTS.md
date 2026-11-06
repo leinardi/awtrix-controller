@@ -52,12 +52,13 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 `deny.toml` configures cargo-deny, and the lint set is `[workspace.lints]` in the root
 `Cargo.toml`.
 
-- `src/main.rs` — the entry point: builds the runtime by hand and ends it within the shutdown
-  budget. `src/lib.rs` holds the module tree.
+- `src/main.rs` — the entry point: builds the runtime (service-kit's `build_runtime`) and ends it
+  within the shutdown budget (`run_until_exit`). `src/lib.rs` holds the module tree.
 - `src/cli/` — the clap flags, Go-compatible value parsing, and the debug-only test-notification
   flags.
-- `src/run/` — wiring: config, logger, broker, controllers, the device event queue, signals and
-  the 2 s `SHUTDOWN_BUDGET`. `src/version.rs` — the version strings.
+- `src/run/` — wiring: config, logger, broker, controllers, the device event queue, the signal
+  wait and the 2 s `SHUTDOWN_BUDGET`; `run::Exit` is service-kit's `Exit`, the exit code and the
+  deadline `main` ends the runtime by. `src/version.rs` — the version strings (`buildinfo!`).
 - `src/broker/` — the embedded rmqtt broker: TCP and optional WebSocket listeners, and the hook
   that authenticates clients and reacts to connects.
 - `src/clientstate/` — the thread-safe registry of connected clients.
@@ -70,18 +71,22 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `src/scheduler/`, `src/clock/` — the recurring-job scheduler and the injectable clock the tests
   drive; `clock::resolve_local` is the one local-date-and-time-to-instant conversion.
 - `src/model/` — the JSON payloads Awtrix3 accepts.
-- `src/logger/` — the tracing subscriber (text or JSON).
-- `src/test_support.rs` — test-only helpers, such as capturing the log output.
+- `src/logger/` — the tracing subscriber (text or JSON), built by `tracing-setup` with the `log`
+  facade bridged in; the level and format are resolved here.
+- `src/test_support.rs` — test-only helpers: `install` scopes the JSON subscriber over a
+  `tracing-setup` `Capture`.
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the zig, cargo-zigbuild, droast and ShellCheck pins, no vacuous flags),
-  `dockerfiles.rs` (the image's stages, downloads, labels and frontend, and droast's label schema),
+  version everywhere, the CI toolchain steps, the zig, cargo-zigbuild, droast and ShellCheck pins,
+  the rustdoc gate, no vacuous flags),
+  `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
+  stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
   `docs.rs` (Markdown links), `license_headers.rs` and `suppressions.rs` (the two scripts below),
-  and `workspace_lints.rs` (every member opts into the workspace lints). `meta/src/` holds their
-  helpers: `repo` reads tracked files, `gitenv` isolates scratch-repository git commands,
-  `toolgate` finds droast and shellcheck, `dockerfile` parses the Dockerfile and `links` checks
-  Markdown.
+  and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
+  `repo-meta` checks with this repository's parameters, beside the rules that are its own.
+  `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the
+  gate of droast and shellcheck (testenv-core's `toolgate`).
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
   digest; the build stage cross-compiles a static musl binary with cargo-zigbuild), a compose
   example and the sample config.
@@ -100,6 +105,50 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `.suppressions-baseline`: written by `scripts/check-suppressions.sh --update`.
 - `Cargo.lock`: written by cargo; change it with `cargo update -p <crate>`, never by hand.
 
+### Shared crates (rust-common)
+
+`go-clock` (the injected clock, re-exported by `src/clock`), `service-kit` (`buildinfo!`, and with
+its `runtime` feature the runtime builder and its bounded shutdown) and `tracing-setup` (the
+logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]` add its `testing`
+feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
+(default features) are the meta crate's. They come from
+[leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by `rev`
+in the root `Cargo.toml`'s `[workspace.dependencies]` (a release tag once rust-common's next
+release is out). Each member opts in with `workspace = true`, plus its own features.
+
+- **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
+  its code into this repository. A fix to shared code lands in rust-common first, then reaches here
+  by moving the `rev`.
+- **Moving the `rev`** needs the network: change it on all five lines (nothing checks that they
+  agree; a partial move locks two revs side by side), then run `cargo fetch` before the `--locked`
+  make targets, which otherwise refuse the stale lock. The manifest change is what makes cargo
+  re-resolve the git source; `cargo fetch` changes nothing else, whereas `cargo update -p <crate>`
+  also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
+  only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock` changes together. `deny.toml`
+  allow-lists the source (`allow-git`); it changes with the URL. `make rust-deny` checks the root
+  package's graph only (`RUST_DENY_ARGS` is empty), so `go-clock`, `service-kit` and
+  `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`, `testenv-core`,
+  `go-compat` and its other dependencies) is not.
+- **Local work on a shared crate** uses an uncommitted
+  `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
+  `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
+  crate's own rust-common dependencies, such as `go-compat`, are path dependencies there, so they
+  follow). The patch re-locks the crates, so refresh `Cargo.lock` once without `--locked`
+  (`cargo fetch`). When done, remove the table and `git checkout Cargo.lock`: neither
+  the table nor the patched lock is ever committed, since CI and the image build cannot see the
+  path.
+
+This repository's intentional differences from the other Rust services:
+
+- **The signal wait stays local** (`run::wait_for_stop`, not service-kit's `shutdown_signal`): it
+  also ends on the `CancellationToken` `run_with_options` is given, which the tests stop the run
+  with, and when SIGTERM cannot be installed it warns and keeps waiting on SIGINT, where
+  service-kit's future would never resolve.
+- **The local-time conversions stay local** (`clock::resolve_local`, `clock::next_local_midnight`):
+  they are this controller's daylight-saving policy on jiff's zones, not part of the injected
+  clock; only `Clock`, `SystemClock`, `TokioClock` and the tests' `FakeClock` come from
+  `go-clock`.
+
 ## Validation matrix
 
 Run before considering an edit done. `make check` applies to every row.
@@ -107,6 +156,7 @@ Run before considering an edit done. `make check` applies to every row.
 | You edited | Run |
 | --- | --- |
 | `**/*.rs` | `make verify`, then `make check-stage` |
+| the rust-common `rev` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
 | `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
@@ -156,8 +206,9 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   `clock::resolve_local` (a gap moves forward by its length, a fold takes the earlier instant). No
   other module calls jiff's disambiguation directly.
 - **Version strings:** `src/version.rs` reads `AWTRIX_CONTROLLER_VERSION`,
-  `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` at compile time (`option_env!`), falling
-  back to `dev`, `none` and `unknown`. `make rust-build`, `make rust-dist` and `make rust-run` set
+  `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` at compile time (service-kit's
+  `buildinfo!`), falling back to `dev`, `none` and `unknown` when unset (an empty stamp stays
+  empty). `make rust-build`, `make rust-dist` and `make rust-run` set
   them from git (`RUST_STAMP_PREFIX` in the Makefile, for make-common's `.mk/rust.mk`), and the
   Dockerfile and the release workflow from the release version.
 - Every Rust and shell file, the Dockerfile, the Makefile and the repo-local `.mk` fragments carry
