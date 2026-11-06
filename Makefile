@@ -56,6 +56,17 @@ BIN_NAME     ?= awtrix-controller
 RUST_STAMP_PREFIX := AWTRIX_CONTROLLER
 RUST_DENY_ARGS    :=
 
+# The date stamp is HEAD's commit date in UTC (rust.mk's GIT_COMMIT_DATE, the clock's only
+# outside git), the date release.yaml stamps. A stamp that moves only with a commit keeps a
+# repeated build a cache hit: a new date on every make would recompile the crate that reads it
+# each time.
+BUILD_DATE ?= $(or $(GIT_COMMIT_DATE),$(shell date -u +"%Y-%m-%dT%H:%M:%SZ"))
+
+# rust-build unstamped, as rust-test builds: the two share the awtrix-controller crate's units
+# instead of each recompiling it after the other. rust-dist, rust-run and the image build stay
+# stamped.
+RUST_BUILD_ENV :=
+
 # Docker build settings
 DOCKERFILE     ?= deployments/docker/Dockerfile
 DOCKER_CONTEXT ?= .

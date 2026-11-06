@@ -23,7 +23,7 @@
  */
 
 //! The build's version strings, set at compile time through `AWTRIX_CONTROLLER_VERSION`,
-//! `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`make rust-build`, `make rust-run`
+//! `AWTRIX_CONTROLLER_COMMIT` and `AWTRIX_CONTROLLER_DATE` (`make rust-dist`, `make rust-run`
 //! and the image build pass them), read by service-kit's `buildinfo!`, and logged once at startup.
 //! A stamp the build did not set takes its default; one set to the empty string stays empty.
 

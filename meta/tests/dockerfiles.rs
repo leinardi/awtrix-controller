@@ -53,7 +53,9 @@ const FORBIDDEN_PLATFORMS: &[&str] = &["linux/arm/v", "linux/386"];
 const STAGES: &[&str] = &["build", "runtime"];
 
 /// The version stamps src/version.rs reads (through service-kit's `buildinfo!`), the build stage's
-/// RUN that runs cargo zigbuild sets and make-common's rust.mk sets for `make rust-build`.
+/// RUN that runs cargo zigbuild sets and make-common's rust.mk sets for `make rust-dist` and
+/// `make rust-run` (`make rust-build` builds unstamped, as the tests do: `RUST_BUILD_ENV :=` in the
+/// Makefile).
 const STAMPS: Stamps<'static> = Stamps {
     prefix: "AWTRIX_CONTROLLER",
     fields: &STAMP_FIELDS,
