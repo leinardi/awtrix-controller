@@ -396,7 +396,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "clock"
 version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?rev=2179ec42584417bcea437b90b168f632890babe6#2179ec42584417bcea437b90b168f632890babe6"
+source = "git+https://github.com/leinardi/rust-common?rev=bfe8c584f65c4b28c73de91162740105fdc5f29c#bfe8c584f65c4b28c73de91162740105fdc5f29c"
 dependencies = [
  "jiff",
  "tokio",
@@ -2094,7 +2094,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "repo-meta"
 version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?rev=2179ec42584417bcea437b90b168f632890babe6#2179ec42584417bcea437b90b168f632890babe6"
+source = "git+https://github.com/leinardi/rust-common?rev=bfe8c584f65c4b28c73de91162740105fdc5f29c#bfe8c584f65c4b28c73de91162740105fdc5f29c"
 dependencies = [
  "regex",
  "serde-saphyr",
@@ -2539,7 +2539,7 @@ dependencies = [
 [[package]]
 name = "service-kit"
 version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?rev=2179ec42584417bcea437b90b168f632890babe6#2179ec42584417bcea437b90b168f632890babe6"
+source = "git+https://github.com/leinardi/rust-common?rev=bfe8c584f65c4b28c73de91162740105fdc5f29c#bfe8c584f65c4b28c73de91162740105fdc5f29c"
 dependencies = [
  "tokio",
 ]
@@ -2838,7 +2838,7 @@ dependencies = [
 [[package]]
 name = "testenv-core"
 version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?rev=2179ec42584417bcea437b90b168f632890babe6#2179ec42584417bcea437b90b168f632890babe6"
+source = "git+https://github.com/leinardi/rust-common?rev=bfe8c584f65c4b28c73de91162740105fdc5f29c#bfe8c584f65c4b28c73de91162740105fdc5f29c"
 dependencies = [
  "jiff",
  "regex",
@@ -3163,7 +3163,7 @@ dependencies = [
 [[package]]
 name = "tracing-setup"
 version = "0.3.0"
-source = "git+https://github.com/leinardi/rust-common?rev=2179ec42584417bcea437b90b168f632890babe6#2179ec42584417bcea437b90b168f632890babe6"
+source = "git+https://github.com/leinardi/rust-common?rev=bfe8c584f65c4b28c73de91162740105fdc5f29c#bfe8c584f65c4b28c73de91162740105fdc5f29c"
 dependencies = [
  "serde_json",
  "tracing",
