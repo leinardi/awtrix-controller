@@ -81,8 +81,8 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   the rustdoc gate, no vacuous flags),
   `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
   stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
-  `license_headers.rs` and `suppressions.rs` (the two scripts below), and `workspace_lints.rs`
-  (every member opts into the workspace lints). Most run rust-common's `repo-meta` checks with this
+  `suppressions.rs` (the ratchet script below), and `workspace_lints.rs` (every member opts into
+  the workspace lints). Most run rust-common's `repo-meta` checks with this
   repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the
   gate of droast and shellcheck (testenv-core's `toolgate`).
@@ -163,7 +163,7 @@ Run before considering an edit done. `make check` applies to every row.
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
 | `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
 | `scripts/check-suppressions.sh`, `.suppressions-baseline` | `cargo test --locked -p meta --test suppressions` |
-| `scripts/check-license-headers.sh` | `cargo test --locked -p meta --test license_headers` |
+| `scripts/check-license-headers.sh` | `pre-commit run check-license-headers --all-files` |
 | `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
 | `.github/scripts/binary-attestation-status.sh` | `bash .github/scripts/binary-attestation-status.test.sh` (also the `release-scripts` CI job) |
 | `.github/workflows/**`, `.github/actions/**` | `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test toolchain --test dockerfiles` |
