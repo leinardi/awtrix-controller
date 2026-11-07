@@ -15,9 +15,7 @@ repeatedly bite:
 - pedantic: `#[must_use]` on pure fns, `# Errors` docs, identifiers in backticks in docs.
 - Public items before private ones within an `impl` (review rule, not linted).
 
-Suppressions: only `#[expect(lint, reason = "...")]`, ratcheted per lint against
-`.suppressions-baseline`; a commit adding or moving one must run
-`scripts/check-suppressions.sh --update` and commit the baseline. The reason says why the fix does
+Suppressions: only `#[expect(lint, reason = "...")]`. The reason says why the fix does
 not apply, not which lint fired.
 
 Tests: paused tokio clock (`start_paused = true`) + `TokioClock`; bound every wait with

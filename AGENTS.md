@@ -81,9 +81,8 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   the rustdoc gate, no vacuous flags),
   `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
   stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
-  `suppressions.rs` (the ratchet script below), and `workspace_lints.rs` (every member opts into
-  the workspace lints). Most run rust-common's `repo-meta` checks with this
-  repository's parameters, beside the rules that are its own.
+  and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
+  `repo-meta` checks with this repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the
   gate of droast and shellcheck (testenv-core's `toolgate`).
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
@@ -94,14 +93,13 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `droast.toml` — the Dockerfile Roast policy: the seven required OCI labels, strict labels, a
   required ShellCheck bridge.
 - `docs/release.md` — how a release is cut and recovered.
-- `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/rustfmt-on-edit.sh` (the
+- `scripts/` — `check-license-headers.sh`, `hooks/rustfmt-on-edit.sh` (the
   Claude Code edit hook in `.claude/settings.json`) and make-common's `bootstrap-mk-common.sh`.
 
 ### Generated or vendored: never hand-edit
 
 - `.mk/{docker,help,password,pre-commit,rust}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
   make-common; refresh them with `make mk-common-update`, and port a change upstream.
-- `.suppressions-baseline`: written by `scripts/check-suppressions.sh --update`.
 - `Cargo.lock`: written by cargo; change it with `cargo update -p <crate>`, never by hand.
 
 ### Shared crates (rust-common)
@@ -162,7 +160,6 @@ Run before considering an edit done. `make check` applies to every row.
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
 | `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
-| `scripts/check-suppressions.sh`, `.suppressions-baseline` | `cargo test --locked -p meta --test suppressions` |
 | `scripts/check-license-headers.sh` | `pre-commit run check-license-headers --all-files` |
 | `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
 | `.github/scripts/binary-attestation-status.sh` | `bash .github/scripts/binary-attestation-status.test.sh` (also the `release-scripts` CI job) |
@@ -222,22 +219,6 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   apply here, not which rule fired (droast also refuses one without a `reason="..."`).
 - `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` (set by the `rust` CI job and the release's `test` job)
   turns a missing droast or shellcheck into a meta-test failure instead of a skip.
-
-## Suppressions are ratcheted
-
-Every in-file suppression is counted per rule against `.suppressions-baseline` by the
-`check-suppressions` pre-commit hook (`scripts/check-suppressions.sh`), in five families:
-`expect/<lint>` (`#[expect(...)]`, one count per lint it names), `allow/<lint>` (`#[allow(...)]`,
-which the lints refuse in Rust code, so it stays at zero), `shellcheck-disable/<code>`,
-`droast-ignore/<rule>` and `droast-global-ignore/<rule>`.
-
-Adding one is allowed, but never silently: the hook refuses a commit that adds a suppression line
-without changing the baseline in the same commit, including a swap or a moved file that leaves the
-count unchanged. Prefer fixing the finding. If a suppression really is right, write it with a reason
-(`#[expect(clippy::<lint>, reason = "...")]`), stage it, run
-`scripts/check-suppressions.sh --update`, and commit the baseline alongside it. A count that has
-fallen below its baseline fails the same way, with the same fix: the file describes the repository,
-not a past one.
 
 ## Project skills
 

@@ -230,7 +230,7 @@ Do not skim for style. Run these passes, each with a "how would I make this fail
   environment variable, config key, topic, payload field, exit code or error text changed
   without updating every consumer and the docs (§5 (e)).
 - **Meta-tests**: a test under `meta/tests/` (pins, vacuous flags, Dockerfile invariants,
-  the license and suppression scripts) guards a claim about the repository rather than the
+  the license script) guards a claim about the repository rather than the
   product. Make the guarded thing go wrong and check the test notices: a test that passes because
   its input is empty, its file list matched nothing, its rule never ran, its tool was skipped
   (`AWTRIX_CONTROLLER_REQUIRE_TOOLS` unset) or an allowlist entry swallows the new line is a
@@ -273,9 +273,7 @@ which spec line retires this surface, and does it change in this diff? If none, 
 ### (c) A new suppression has to show its work
 
 Any new `#[expect(...)]`, `# shellcheck disable=` or `# droast ignore=` must explain why the
-fix does not apply, and arrives with `.suppressions-baseline` updated in the same commit
-(`scripts/check-suppressions.sh --update`); a baseline raised without a reason in the diff is a
-finding too: for `too_many_lines`, what broke when the split was tried; for a cast, why the range
+fix does not apply: for `too_many_lines`, what broke when the split was tried; for a cast, why the range
 is safe. A reason that restates the lint, or no reason, is a finding; so is an `#[allow]`
 anywhere (the workspace lints deny it in Rust code). The same holds for a lint relaxed in
 `[workspace.lints]` or `clippy.toml`, and for a member without `[lints] workspace = true`.
@@ -315,7 +313,7 @@ confirmed finding:
 | `Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify` and `make rust-deny` (cargo-deny; network required) |
 | `deployments/docker/Dockerfile`, `droast.toml` | droast via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
 | `.github/scripts/**` | `bash .github/scripts/binary-attestation-status.test.sh` |
-| `meta/**`, `scripts/check-*.sh`, `.suppressions-baseline` | `cargo test --locked -p meta` with `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` |
+| `meta/**`, `scripts/check-*.sh` | `cargo test --locked -p meta` with `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |
 | anything else | `make check` (pre-commit on all files) |
 

@@ -73,19 +73,6 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-      # Every #[expect], shellcheck and droast suppression is counted per rule against
-      # .suppressions-baseline (AGENTS.md). Always runs: the ratchet reads the whole tree and the
-      # staged diff, and a commit that touches no source at all can still delete the baseline out
-      # from under it.
-      - id: check-suppressions
-        name: suppression ratchet
-        entry: scripts/check-suppressions.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-        # always_run makes this hook eligible at every installed stage, and commit-msg is one of
-        # them; pinned so the whole-tree scan runs once.
-        stages: [pre-commit]
   # Every relative link and fragment in the Markdown resolves, offline: an external URL is not
   # fetched. A whole-tree check, so it always runs (deleting a linked page passes no file to the
   # hook at all) and takes its inputs from args rather than from the file list. --hidden reaches

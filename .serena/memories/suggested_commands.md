@@ -13,6 +13,4 @@
 - `make rust-run ARGS="--config config.yaml"` (version env vars from git; `rust-dist` sets them
   too, `rust-build` does not). The Rust targets come from make-common's `.mk/rust.mk`.
 - `make docker-build` / `make docker-run` (dhi.io login required).
-- Suppression baseline refresh: `scripts/check-suppressions.sh --update` (commit the baseline with
-  the suppression).
 - Workflow lint: `pre-commit run actionlint --all-files`.

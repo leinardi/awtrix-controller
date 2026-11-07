@@ -45,10 +45,7 @@ make check-stage   # the same, on the staged files only
 CI runs the same hooks, the tests and cargo-deny on every pull request and every push to `main`
 (`.github/workflows/ci.yaml`).
 
-Every source file carries the MIT license header (the `check-license-headers` hook), and every
-`#[expect(...)]`, `#[allow(...)]`, `# shellcheck disable=` or `# droast ignore=` is counted against
-`.suppressions-baseline` (the `check-suppressions` hook): see
-[AGENTS.md](AGENTS.md#suppressions-are-ratcheted).
+Every source file carries the MIT license header (the `check-license-headers` hook).
 
 ## Branches and pull requests
 
