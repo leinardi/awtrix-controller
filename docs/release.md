@@ -117,11 +117,10 @@ the tagged commit (see [Recovering a failed publish](#recovering-a-failed-publis
 1. **Refuse anything but `main`.** The `guard` job fails, rather than skips, when `github.ref` is
    not `refs/heads/main`, and every other job waits on it. `workflow_dispatch` lets the caller pick
    any branch, and the release job holds `contents: write`, `packages: write` and an OIDC identity.
-2. **Verify.** `test` (clippy, then `cargo test --workspace --locked` with
-   `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`) and `audit` (`cargo deny check`: advisories, licences,
-   bans and sources). They are copies of the CI jobs rather than a call into `ci.yaml`, so a release
-   never depends on which pull request last ran CI, and `test` uses the pinned Rust toolchain
-   (`1.98.1`) the release builds with.
+2. **Verify.** `test` (clippy, then `cargo test --workspace --locked`) and `audit` (`cargo deny
+   check`: advisories, licences, bans and sources). They are copies of the CI jobs rather than a
+   call into `ci.yaml`, so a release never depends on which pull request last ran CI, and `test`
+   uses the pinned Rust toolchain (`1.98.1`) the release builds with.
 3. **Resolve the version**, as in [Versioning](#versioning).
 4. **Check the tag.** If `refs/tags/<version>` already exists on the remote, the run continues only
    when it points at `HEAD`, as a recovery. Pointing anywhere else is a hard failure. The tag is

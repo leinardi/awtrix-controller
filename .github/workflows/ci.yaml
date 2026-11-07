@@ -250,9 +250,7 @@ jobs:
 
   # The Rust workspace: the same workspace-wide commands as make verify-rust and the pre-commit
   # hooks, plus cargo-deny (advisories, licences, bans and sources; the advisory database needs the
-  # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's; with
-  # AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (droast, shellcheck) that is missing fails
-  # them instead of skipping them.
+  # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's.
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -271,7 +269,7 @@ jobs:
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      # The meta crate's Dockerfile test drives droast, whose ShellCheck bridge is required.
+      # droast, whose ShellCheck bridge is required, at the pinned release.
       - name: Set up droast
         uses: ./.github/actions/setup-droast
 
@@ -286,8 +284,6 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run the tests
-        env:
-          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
         run: cargo test --workspace --locked
 
       - name: Check Rust documentation

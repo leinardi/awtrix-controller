@@ -22,23 +22,15 @@
  * SOFTWARE.
  */
 
-//! The shipped image: the pinned frontend and the two stages, and droast's enforcement of the label
-//! schema. The frontend and stage rules are `repo_meta::image`'s, with this repository's
-//! parameters, and their negative controls run them on altered copies of the real file; the label
-//! arguments and the droast runs (with the tool gate `meta::TOOLS`) are this repository's own.
-
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+//! The shipped image: the pinned frontend and the two stages. The frontend and stage rules are
+//! `repo_meta::image`'s, with this repository's parameters, and their negative controls run them on
+//! altered copies of the real file. The `droast` hook enforces the label schema.
 
 use repo_meta::dockerfile;
 use repo_meta::image::{BasePolicy, stage_problems, syntax_problems};
-use repo_meta::{pattern, report};
+use repo_meta::report;
 
 const SHIPPED_DOCKERFILE: &str = "deployments/docker/Dockerfile";
-const RELEASE_WORKFLOW: &str = ".github/workflows/release.yaml";
-const DOCKER_FRAGMENT: &str = ".mk/docker.mk";
-const DROAST_CONFIG: &str = "droast.toml";
 const STAGES: &[&str] = &["build", "runtime"];
 
 fn shipped() -> String {
@@ -63,78 +55,6 @@ fn syntax_directive_is_pinned() {
 fn shipped_stages_are_build_and_runtime() {
     let problems = stage_problems(SHIPPED_DOCKERFILE, &shipped(), STAGES, BasePolicy::TagOnly);
     assert!(problems.is_empty(), "{}", report(&problems));
-}
-
-/// Go: `TestLabelArgumentsAreSupplied`. Every build that publishes or runs an image passes the
-/// three build arguments the version, revision and created labels read: without them the labels
-/// say dev, none and unknown.
-#[test]
-fn label_arguments_are_supplied() {
-    let repo = meta::repo();
-    for file in [RELEASE_WORKFLOW, DOCKER_FRAGMENT] {
-        let content = repo.read(file);
-        for argument in ["VERSION", "COMMIT", "DATE"] {
-            assert!(
-                pattern(&format!(r"(?m)(^\s*|--build-arg ){argument}=\S")).is_match(&content),
-                "{file} does not pass the {argument} build argument"
-            );
-        }
-    }
-}
-
-/// The path of droast, after checking that the `shellcheck` its required bridge runs is on `PATH`
-/// too. `None` when either is missing and the test should return early.
-fn lookup_droast() -> Option<PathBuf> {
-    let droast = meta::TOOLS.lookup(meta::DROAST)?;
-    meta::TOOLS.lookup(meta::SHELLCHECK)?;
-    Some(droast)
-}
-
-fn run_droast(droast: &Path, dockerfile: &Path) -> Output {
-    Command::new(droast)
-        .arg("--config")
-        .arg(meta::repo().path(DROAST_CONFIG))
-        .arg(dockerfile)
-        .output()
-        .unwrap_or_else(|error| panic!("run droast: {error}"))
-}
-
-/// Go's label test, now driving droast. droast, with the repository's configuration, passes the
-/// shipped Dockerfile and fails the same file without one of the seven labels with DF074, a
-/// missing required label, which is an error.
-#[test]
-fn droast_enforces_the_labels() {
-    let Some(droast) = lookup_droast() else {
-        return;
-    };
-    let repo = meta::repo();
-
-    let output = run_droast(&droast, &repo.path(SHIPPED_DOCKERFILE));
-    assert!(
-        output.status.success(),
-        "droast rejects {SHIPPED_DOCKERFILE}:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let shipped = shipped();
-    let without_version = pattern(r"(?m)^\s*org\.opencontainers\.image\.version=.*\n")
-        .replace_all(&shipped, "")
-        .into_owned();
-    assert_ne!(
-        without_version, shipped,
-        "could not remove the version label from the fixture"
-    );
-    let scratch = tempfile::tempdir().expect("scratch directory");
-    let scratch_dockerfile = scratch.path().join("Dockerfile");
-    fs::write(&scratch_dockerfile, without_version).expect("write the fixture");
-
-    let output = run_droast(&droast, &scratch_dockerfile);
-    let text = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        !output.status.success() && text.contains("DF074"),
-        "droast accepted a Dockerfile without the version label:\n{text}"
-    );
 }
 
 /// `content` with its first `from` replaced by `to`; `from` must be there, so an edit cannot

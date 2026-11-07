@@ -11,12 +11,10 @@
   `rustup target add x86_64-unknown-linux-musl`)
 - Docker, for building the container image
 - [Dockerfile Roast](https://github.com/immanuwell/dockerfile-roast) (`droast`): pre-commit builds
-  its own with `cargo` at the pinned rev, but the Dockerfile meta-tests run the `droast` on `PATH`
-  (the release `.github/actions/setup-droast` pins; they skip without it, unless
-  `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`)
+  its own with `cargo` at the pinned rev (the release `.github/actions/setup-droast` pins)
 - [ShellCheck](https://github.com/koalaman/shellcheck) on `PATH`, at the release
   `.github/actions/setup-shellcheck` pins: droast's ShellCheck bridge is required, so the droast
-  hook and the Dockerfile meta-tests need it
+  hook needs it
 - [`pre-commit`](https://pre-commit.com/): install the hooks once with `make pre-commit-install`. It
   installs both the `pre-commit` and the `commit-msg` hooks, so commit messages are checked when you
   commit, not when the release runs.

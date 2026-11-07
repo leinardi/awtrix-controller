@@ -233,7 +233,7 @@ Do not skim for style. Run these passes, each with a "how would I make this fail
   the license script) guards a claim about the repository rather than the
   product. Make the guarded thing go wrong and check the test notices: a test that passes because
   its input is empty, its file list matched nothing, its rule never ran, its tool was skipped
-  (`AWTRIX_CONTROLLER_REQUIRE_TOOLS` unset) or an allowlist entry swallows the new line is a
+  or an allowlist entry swallows the new line is a
   false pass, and a meta-test that can no longer fail is a finding.
 - **Tests**: does the diff add or change a test for the behavior it introduces? A test that
   passes against the *old* code, that asserts on a fake's recorded calls instead of the
@@ -313,7 +313,7 @@ confirmed finding:
 | `Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify` and `make rust-deny` (cargo-deny; network required) |
 | `deployments/docker/Dockerfile`, `droast.toml` | droast via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
 | `.github/scripts/**` | `bash .github/scripts/binary-attestation-status.test.sh` |
-| `meta/**`, `scripts/check-*.sh` | `cargo test --locked -p meta` with `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` |
+| `meta/**`, `scripts/check-*.sh` | `cargo test --locked -p meta` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |
 | anything else | `make check` (pre-commit on all files) |
 

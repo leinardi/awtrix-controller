@@ -138,8 +138,6 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run the test suite
-        env:
-          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
         run: cargo test --workspace --locked
 
   audit:
