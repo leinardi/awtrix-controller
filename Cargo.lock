@@ -396,7 +396,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "clock"
 version = "0.4.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+source = "git+https://github.com/leinardi/rust-common?rev=56ed48cc70eed602524cc2014fb5f8dfecc8fd21#56ed48cc70eed602524cc2014fb5f8dfecc8fd21"
 dependencies = [
  "jiff",
  "tokio",
@@ -2094,7 +2094,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "repo-meta"
 version = "0.4.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+source = "git+https://github.com/leinardi/rust-common?rev=56ed48cc70eed602524cc2014fb5f8dfecc8fd21#56ed48cc70eed602524cc2014fb5f8dfecc8fd21"
 dependencies = [
  "regex",
  "serde-saphyr",
@@ -2539,7 +2539,7 @@ dependencies = [
 [[package]]
 name = "service-kit"
 version = "0.4.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+source = "git+https://github.com/leinardi/rust-common?rev=56ed48cc70eed602524cc2014fb5f8dfecc8fd21#56ed48cc70eed602524cc2014fb5f8dfecc8fd21"
 dependencies = [
  "tokio",
 ]
@@ -2838,7 +2838,7 @@ dependencies = [
 [[package]]
 name = "testenv-core"
 version = "0.4.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+source = "git+https://github.com/leinardi/rust-common?rev=56ed48cc70eed602524cc2014fb5f8dfecc8fd21#56ed48cc70eed602524cc2014fb5f8dfecc8fd21"
 dependencies = [
  "jiff",
  "regex",
@@ -3163,7 +3163,7 @@ dependencies = [
 [[package]]
 name = "tracing-setup"
 version = "0.4.0"
-source = "git+https://github.com/leinardi/rust-common?tag=v0.4.0#e898522b90b1f02aed303a419aa620ac7e737371"
+source = "git+https://github.com/leinardi/rust-common?rev=56ed48cc70eed602524cc2014fb5f8dfecc8fd21#56ed48cc70eed602524cc2014fb5f8dfecc8fd21"
 dependencies = [
  "serde_json",
  "tracing",
