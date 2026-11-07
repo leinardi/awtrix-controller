@@ -343,8 +343,9 @@ digest together. `svu` (`SVU_VERSION` with its `SVU_SHA256`) and Trivy (`TRIVY_V
 reason. Pinning Trivy does not pin what it knows: its vulnerability database is fetched at run time,
 which is the point of scanning at release time.
 
-**The Rust build is pinned the same way.** Every job takes Rust `1.98.1` from
-`dtolnay/rust-toolchain`, the version `rust-toolchain.toml` names. The release job gets zig and
+**The Rust build is pinned the same way.** Every job installs Rust with
+`rustup toolchain install`, which reads the release, the components and the targets from
+`rust-toolchain.toml` (`1.98.1`). The release job gets zig and
 cargo-zigbuild from [`.github/actions/setup-zigbuild`](../.github/actions/setup-zigbuild/action.yaml),
 which downloads their release archives and checks each against a sha256 before using it, at the
 versions the Dockerfile's build stage pins (`ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`). That stage
