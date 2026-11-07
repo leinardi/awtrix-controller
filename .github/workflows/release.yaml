@@ -595,6 +595,37 @@ jobs:
           done
           echo "platforms=${SCANNED[*]}" >> "$GITHUB_OUTPUT"
 
+      # The arm64 image runs on the amd64 runner through binfmt emulation. The registered
+      # emulator image is pinned by index digest, because the action's default is the
+      # moving `latest` tag.
+      - name: Set up QEMU
+        if: steps.mode.outputs.build == 'true' || steps.mode.outputs.mode == 'reuse'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+
+      # What the image prints for --version is what the build stamped into it: the
+      # version, the short commit and the build date. A binary built without its
+      # build args reports the "dev" defaults, and this fails the run before any tag
+      # exists. Each platform runs from the digest that was just scanned.
+      - name: Smoke-test the version stamps of both platform images
+        if: steps.mode.outputs.build == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.short_sha }}
+          DATE: ${{ steps.version.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          for platform in ${PLATFORMS//,/ }; do
+            GOT=$(docker run --rm --platform "$platform" "$LOCAL_IMAGE@$DIGEST" --version)
+            if [ "$GOT" != "$VERSION $COMMIT $DATE" ]; then
+              echo "The $platform image prints '$GOT', want '$VERSION $COMMIT $DATE'." >&2
+              exit 1
+            fi
+            echo "$platform: $GOT"
+          done
+
       # The last look at the tags before the point of no return. Concurrency
       # serializes the workflow, but a tag can also arrive from outside it, and
       # the check in the version step ran before several minutes of building.
@@ -804,6 +835,26 @@ jobs:
             if ! trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --platform "$platform" "$IMAGE_REPO@$DIGEST"; then
               echo "::warning::The reused $IMAGE_REPO@$DIGEST ($platform) has HIGH or CRITICAL findings, or could not be scanned. It is already published and was not changed; consider releasing a new version."
             fi
+          done
+
+      # A reused image is not rebuilt, so its stamps are read the same way, from the
+      # published digest, before the run goes on to the GitHub release.
+      - name: Smoke-test the version stamps of the reused image
+        if: ${{ !inputs.dry_run && steps.mode.outputs.mode == 'reuse' }}
+        env:
+          DIGEST: ${{ steps.sign.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.short_sha }}
+          DATE: ${{ steps.version.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          for platform in ${PLATFORMS//,/ }; do
+            GOT=$(docker run --rm --platform "$platform" "$IMAGE_REPO@$DIGEST" --version)
+            if [ "$GOT" != "$VERSION $COMMIT $DATE" ]; then
+              echo "The reused $platform image prints '$GOT', want '$VERSION $COMMIT $DATE'." >&2
+              exit 1
+            fi
+            echo "$platform: $GOT"
           done
 
       - name: Tag the image with the version

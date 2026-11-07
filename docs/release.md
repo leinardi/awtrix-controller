@@ -153,7 +153,10 @@ them:
    `trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --platform <platform> <image>@<digest>`.
    A finding fails the run, with no tag anywhere. `--ignore-unfixed` is not used: a vulnerability
    with no fix yet still blocks, unless it is accepted in [`.trivyignore`](../.trivyignore) with a
-   reason and an expiry date.
+   reason and an expiry date. Then **smoke-test the version stamps**: each platform image, run from
+   the scanned digest (arm64 under QEMU), must print `<version> <short commit> <build date>` for
+   `--version`. A binary built without its build arguments prints the `dev` defaults and fails the
+   run, still with no tag anywhere.
 4. **Gate the tag.** The highest released version is read again, from the remote, because a tag can
    arrive from outside the workflow while it builds. A fresh release that is no longer the highest
    fails with nothing pushed.
@@ -221,7 +224,8 @@ Either way the tag check sees the tag on `HEAD`, and the mode decision picks one
   is built, copied or attested again. It is never compared with a rebuilt index, because a rebuilt
   index never matches (see above). Its platform images are scanned, and findings are reported as
   warnings rather than failures: the image is already published and immutable, and failing would
-  only leave the release assets unfinished.
+  only leave the release assets unfinished. Its version stamps are smoke-tested the same way, and
+  a mismatch does fail the run.
 - **Recovery, publish**, when the tag exists and `:<version>` does not: the earlier run failed
   between pushing the tag and tagging the image. Fresh steps 1 to 3 and 7 to 9 run: a new build,
   scanned, copied, checked, attested, signed and tagged. Nothing is compared with what an earlier
