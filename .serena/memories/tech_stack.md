@@ -6,7 +6,7 @@
   Static musl binaries via cargo-zigbuild + zig.
 - Crates: tokio + tokio-util, rmqtt + rmqtt-retainer (embedded broker), rumqttc (tests only),
   serde/serde_json/serde_yaml_ng, jiff (bundled tzdb) + sunrise, ureq with rustls/ring/webpki-roots,
-  tracing + tracing-subscriber, clap, thiserror. From leinardi/rust-common (git, pinned by commit;
+  tracing + tracing-subscriber, clap, thiserror. From leinardi/rust-common (git, pinned by tag;
   see AGENTS.md "Shared crates"): clock, service-kit, tracing-setup (its `log-bridge` feature
   bridges the `log` facade), and repo-meta + testenv-core for the meta-tests.
 - Lint: `[workspace.lints]` (clippy pedantic + restriction lints) and `clippy.toml`; rustfmt.
