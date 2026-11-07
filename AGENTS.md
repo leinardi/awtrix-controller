@@ -77,8 +77,8 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the CI toolchain steps, the zig, cargo-zigbuild, droast and ShellCheck pins,
-  no vacuous flags),
+  version everywhere, the zig, cargo-zigbuild, droast, ShellCheck and Trivy pins, no vacuous
+  flags),
   `dockerfiles.rs` (the image's frontend and stages, the label build arguments, and droast's label
   schema),
   and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
@@ -109,26 +109,25 @@ its `runtime` feature the runtime builder and its bounded shutdown) and `tracing
 logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]` add its `testing`
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
-[leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v0.4.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "0.4"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+[leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by commit
+(`rev`, the full SHA) in the root `Cargo.toml`'s `[workspace.dependencies]`, with `version = "0.4"`,
+the crate's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
   its code into this repository. A fix to shared code lands in rust-common first, then reaches here
-  by moving the `tag`.
-- **Moving the `tag`** needs the network: change it on all five lines (nothing checks that they
-  agree; a partial move locks two tags side by side), and `version` with it when the tag's
-  `<major>.<minor>` moves (a `v0.4.0` checkout does not resolve against `version = "0.3"`; a
-  `v0.3.x` one does), then run `cargo fetch` before the `--locked` make targets, which otherwise
-  refuse the stale lock. The manifest change is what makes cargo
-  re-resolve the git source; `cargo fetch` changes nothing else, whereas `cargo update -p <crate>`
-  also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
-  only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock` changes together. `deny.toml`
-  allow-lists the source (`allow-git`); it changes with the URL. `make rust-deny` checks the root
-  package's graph only (`RUST_DENY_ARGS` is empty), so `clock`, `service-kit` and
-  `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`, `testenv-core`
-  and their dependencies) is not.
+  by moving the `rev`.
+- **Moving the `rev`** needs the network: change it on all five lines (nothing checks that they
+  agree; a partial move locks two revisions side by side), and `version` with it when the crate's
+  `<major>.<minor>` moves (a `0.4.x` checkout does not resolve against `version = "0.3"`), then run
+  `cargo fetch` before the `--locked` make targets, which otherwise refuse the stale lock. The
+  manifest change is what makes cargo re-resolve the git source; `cargo fetch` changes nothing else,
+  whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2, getrandom).
+  `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock`
+  changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with the URL. `make
+  rust-deny` checks the root package's graph only (`RUST_DENY_ARGS` is empty), so `clock`,
+  `service-kit` and `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`,
+  `testenv-core` and their dependencies) is not.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
@@ -156,7 +155,7 @@ Run before considering an edit done. `make check` applies to every row.
 | You edited | Run |
 | --- | --- |
 | `**/*.rs` | `make verify`, then `make check-stage` |
-| the rust-common `tag` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
+| the rust-common `rev` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
 | `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
