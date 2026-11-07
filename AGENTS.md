@@ -77,7 +77,7 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the zig, cargo-zigbuild, droast, ShellCheck and Trivy pins, no vacuous
+  version everywhere, the zig, cargo-zigbuild, ShellCheck and Trivy pins, no vacuous
   flags),
   `dockerfiles.rs` (the image's frontend and stages),
   and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
@@ -86,8 +86,8 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
   digest; the build stage cross-compiles a static musl binary with cargo-zigbuild), a compose
   example and the sample config.
-- `.github/actions/` — `setup-droast` (the droast release CI installs), `setup-shellcheck` (the
-  ShellCheck droast's bridge runs) and `setup-zigbuild`, pinned and sha256-checked.
+- `.github/actions/` — `setup-shellcheck` (the
+  ShellCheck droast's bridge runs in the pre-commit jobs) and `setup-zigbuild`, pinned and sha256-checked.
 - `droast.toml` — the Dockerfile Roast policy: the seven required OCI labels, strict labels, a
   required ShellCheck bridge.
 - `docs/release.md` — how a release is cut and recovered.

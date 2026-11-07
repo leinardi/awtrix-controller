@@ -23,7 +23,7 @@
  */
 
 //! The repository's tooling pins: every version written in more than one file is one value (the
-//! Rust line and the image's release, zig, cargo-zigbuild, droast, `ShellCheck` and Trivy), and no
+//! Rust line and the image's release, zig, cargo-zigbuild, `ShellCheck` and Trivy), and no
 //! flag makes a gate pass on nothing. The checks are `repo_meta::toolchain::one_value` over this
 //! repository's pin sources and `repo_meta::vacuous`'s; the negative controls run them on altered
 //! copies of the real files and on samples.
@@ -35,7 +35,6 @@ use repo_meta::{Problem, report};
 const DOCKERFILE: &str = "deployments/docker/Dockerfile";
 const RUST_TOOLCHAIN: &str = "rust-toolchain.toml";
 const SETUP_ZIGBUILD: &str = ".github/actions/setup-zigbuild/action.yaml";
-const SETUP_DROAST: &str = ".github/actions/setup-droast/action.yaml";
 const SETUP_SHELLCHECK: &str = ".github/actions/setup-shellcheck/action.yaml";
 const PRE_COMMIT: &str = ".pre-commit-config.yaml";
 const CI_WORKFLOW: &str = ".github/workflows/ci.yaml";
@@ -48,9 +47,6 @@ const ZIG_DOCKERFILE: &str = r"(?m)^ARG ZIG_VERSION=(\S+)$";
 const ZIG_ACTION: &str = r#"ZIG_VERSION:\s*"?([\d.]+)"#;
 const ZIGBUILD_DOCKERFILE: &str = r"(?m)^ARG CARGO_ZIGBUILD_VERSION=(\S+)$";
 const ZIGBUILD_ACTION: &str = r#"CARGO_ZIGBUILD_VERSION:\s*"?([\d.]+)"#;
-const DROAST_HOOK: &str =
-    r"repo: https://github\.com/immanuwell/dockerfile-roast\s+rev:\s*([\d.]+)";
-const DROAST_ACTION: &str = r#"DROAST_VERSION:\s*["']?([\d.]+)"#;
 /// shellcheck-py adds a fourth component of its own (v0.11.0.1), so only the first three count.
 const SHELLCHECK_HOOK: &str =
     r"repo: https://github\.com/shellcheck-py/shellcheck-py\s+rev:\s*v?(\d+\.\d+\.\d+)(?:\.\d+)?";
@@ -92,7 +88,7 @@ fn read(edit: Edit, file: &str) -> String {
 /// Every pin the repository writes in more than one file, each one value: the Rust line
 /// (rust-toolchain.toml, Cargo's `rust-version`, the image's tag), the image's exact Rust release
 /// (its tag and `ARG RUST_VERSION`, the release the musl standard libraries are downloaded for),
-/// zig, cargo-zigbuild, droast, `ShellCheck` and Trivy. `edit` is applied to the content of each
+/// zig, cargo-zigbuild, `ShellCheck` and Trivy. `edit` is applied to the content of each
 /// file read.
 fn pin_problems(edit: Edit) -> Vec<Problem> {
     let dockerfile = read(edit, DOCKERFILE);
@@ -130,14 +126,6 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
         &[],
     ));
     problems.extend(one_value(
-        "droast",
-        &[
-            source(edit, PRE_COMMIT, DROAST_HOOK),
-            source(edit, SETUP_DROAST, DROAST_ACTION),
-        ],
-        &[],
-    ));
-    problems.extend(one_value(
         "ShellCheck",
         &[
             source(edit, PRE_COMMIT, SHELLCHECK_HOOK),
@@ -158,9 +146,8 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
 
 /// The pins hold: rust-toolchain.toml pins an exact release and the MSRV in Cargo.toml and the
 /// image's tag are its line; the image's tag and `ARG RUST_VERSION` are one release; the release
-/// binaries and the image are built with the same zig and cargo-zigbuild; the droast CI installs is
-/// the release the pre-commit hook builds from source; droast's `ShellCheck` bridge runs the release
-/// the shellcheck-py hook wraps; and the release and the scheduled scan run one Trivy.
+/// binaries and the image are built with the same zig and cargo-zigbuild; the `ShellCheck` CI installs is
+/// the release the shellcheck-py hook wraps; and the release and the scheduled scan run one Trivy.
 #[test]
 fn pins_are_one_value() {
     let problems = pin_problems(&|_, content| content);
@@ -264,13 +251,6 @@ fn tool_pin_rules_refuse_each_edit() {
             SETUP_ZIGBUILD,
             "CARGO_ZIGBUILD_VERSION: \"".to_owned(),
             "CARGO_ZIGBUILD_VERSION: \"9".to_owned(),
-            1,
-        ),
-        (
-            "droast",
-            SETUP_DROAST,
-            "DROAST_VERSION:".to_owned(),
-            "DROAST_VERSION: 9".to_owned(),
             1,
         ),
         (
