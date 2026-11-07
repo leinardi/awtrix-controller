@@ -36,7 +36,6 @@ Single test (a unit test is named by its module path, an integration test by its
 ```bash
 cargo test --locked -p awtrix-controller --lib scheduler::tests::job_fires_once_then_reschedules
 cargo test --locked -p awtrix-controller --test broker
-cargo test --locked -p meta --test docs
 ```
 
 The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run,
@@ -78,31 +77,27 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the CI toolchain steps, the zig, cargo-zigbuild, droast and ShellCheck pins,
-  the rustdoc gate, no vacuous flags),
-  `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
-  stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
-  `docs.rs` (Markdown links), `license_headers.rs` and `suppressions.rs` (the two scripts below),
+  version everywhere, the zig, cargo-zigbuild, ShellCheck and Trivy pins, no vacuous
+  flags),
+  `dockerfiles.rs` (the image's frontend and stages),
   and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
   `repo-meta` checks with this repository's parameters, beside the rules that are its own.
-  `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the
-  gate of droast and shellcheck (testenv-core's `toolgate`).
+  `meta/src/lib.rs` holds what they share: `repo()`, the repository under test.
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
   digest; the build stage cross-compiles a static musl binary with cargo-zigbuild), a compose
   example and the sample config.
-- `.github/actions/` — `setup-droast` (the droast the meta-tests drive), `setup-shellcheck` (the
-  ShellCheck droast's bridge runs) and `setup-zigbuild`, pinned and sha256-checked.
+- `.github/actions/` — `setup-shellcheck` (the
+  ShellCheck droast's bridge runs in the pre-commit jobs) and `setup-zigbuild`, pinned and sha256-checked.
 - `droast.toml` — the Dockerfile Roast policy: the seven required OCI labels, strict labels, a
   required ShellCheck bridge.
 - `docs/release.md` — how a release is cut and recovered.
-- `scripts/` — `check-license-headers.sh`, `check-suppressions.sh`, `hooks/rustfmt-on-edit.sh` (the
+- `scripts/` — `check-license-headers.sh`, `hooks/rustfmt-on-edit.sh` (the
   Claude Code edit hook in `.claude/settings.json`) and make-common's `bootstrap-mk-common.sh`.
 
 ### Generated or vendored: never hand-edit
 
 - `.mk/{docker,help,password,pre-commit,rust}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
   make-common; refresh them with `make mk-common-update`, and port a change upstream.
-- `.suppressions-baseline`: written by `scripts/check-suppressions.sh --update`.
 - `Cargo.lock`: written by cargo; change it with `cargo update -p <crate>`, never by hand.
 
 ### Shared crates (rust-common)
@@ -113,8 +108,8 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v0.4.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "0.4"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+tag (`tag = "v1.0.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
+`version = "1.0"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
@@ -122,16 +117,15 @@ its own features.
   by moving the `tag`.
 - **Moving the `tag`** needs the network: change it on all five lines (nothing checks that they
   agree; a partial move locks two tags side by side), and `version` with it when the tag's
-  `<major>.<minor>` moves (a `v0.4.0` checkout does not resolve against `version = "0.3"`; a
-  `v0.3.x` one does), then run `cargo fetch` before the `--locked` make targets, which otherwise
-  refuse the stale lock. The manifest change is what makes cargo
-  re-resolve the git source; `cargo fetch` changes nothing else, whereas `cargo update -p <crate>`
-  also moves unrelated edges (windows-sys, socket2, getrandom). `git diff Cargo.lock` must touch
-  only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock` changes together. `deny.toml`
-  allow-lists the source (`allow-git`); it changes with the URL. `make rust-deny` checks the root
-  package's graph only (`RUST_DENY_ARGS` is empty), so `clock`, `service-kit` and
-  `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`, `testenv-core`
-  and their dependencies) is not.
+  `<major>.<minor>` moves (a `v1.0.0` checkout does not resolve against `version = "0.3"`), then run
+  `cargo fetch` before the `--locked` make targets, which otherwise refuse the stale lock. The
+  manifest change is what makes cargo re-resolve the git source; `cargo fetch` changes nothing else,
+  whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2, getrandom).
+  `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock`
+  changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with the URL. `make
+  rust-deny` checks the root package's graph only (`RUST_DENY_ARGS` is empty), so `clock`,
+  `service-kit` and `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`,
+  `testenv-core` and their dependencies) is not.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
@@ -159,18 +153,17 @@ Run before considering an edit done. `make check` applies to every row.
 | You edited | Run |
 | --- | --- |
 | `**/*.rs` | `make verify`, then `make check-stage` |
-| the rust-common `tag` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
+| the rust-common `tag` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
-| `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check` and in the dockerfiles test), `make docker-build` (needs a `dhi.io` login) |
-| `scripts/check-suppressions.sh`, `.suppressions-baseline` | `cargo test --locked -p meta --test suppressions` |
-| `scripts/check-license-headers.sh` | `cargo test --locked -p meta --test license_headers` |
+| `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check`), `make docker-build` (needs a `dhi.io` login) |
+| `scripts/check-license-headers.sh` | `pre-commit run check-license-headers --all-files` |
 | `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
 | `.github/scripts/binary-attestation-status.sh` | `bash .github/scripts/binary-attestation-status.test.sh` (also the `release-scripts` CI job) |
 | `.github/workflows/**`, `.github/actions/**` | `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test toolchain --test dockerfiles` |
 | `.pre-commit-config.yaml`, `Makefile`, `.mk/**` | `make check`, `cargo test --locked -p meta --test toolchain`, `make help` |
-| `meta/**` | `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta` |
-| `**/*.md` | `cargo test --locked -p meta --test docs`; prose wraps at 100 columns (markdownlint) |
+| `meta/**` | `cargo test --locked -p meta` |
+| `**/*.md` | `pre-commit run lychee --all-files` (offline links and fragments); prose wraps at 100 columns (markdownlint) |
 
 ## Rust coding rules
 
@@ -221,24 +214,6 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   (`scripts/check-license-headers.sh`) checks the whole tree; the make-common files are exempt.
 - A new `#[expect]`, `# shellcheck disable=` or `# droast ignore=` explains why the fix does not
   apply here, not which rule fired (droast also refuses one without a `reason="..."`).
-- `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1` (set by the `rust` CI job and the release's `test` job)
-  turns a missing droast or shellcheck into a meta-test failure instead of a skip.
-
-## Suppressions are ratcheted
-
-Every in-file suppression is counted per rule against `.suppressions-baseline` by the
-`check-suppressions` pre-commit hook (`scripts/check-suppressions.sh`), in five families:
-`expect/<lint>` (`#[expect(...)]`, one count per lint it names), `allow/<lint>` (`#[allow(...)]`,
-which the lints refuse in Rust code, so it stays at zero), `shellcheck-disable/<code>`,
-`droast-ignore/<rule>` and `droast-global-ignore/<rule>`.
-
-Adding one is allowed, but never silently: the hook refuses a commit that adds a suppression line
-without changing the baseline in the same commit, including a swap or a moved file that leaves the
-count unchanged. Prefer fixing the finding. If a suppression really is right, write it with a reason
-(`#[expect(clippy::<lint>, reason = "...")]`), stage it, run
-`scripts/check-suppressions.sh --update`, and commit the baseline alongside it. A count that has
-fallen below its baseline fails the same way, with the same fix: the file describes the repository,
-not a past one.
 
 ## Project skills
 

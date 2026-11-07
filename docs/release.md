@@ -117,11 +117,10 @@ the tagged commit (see [Recovering a failed publish](#recovering-a-failed-publis
 1. **Refuse anything but `main`.** The `guard` job fails, rather than skips, when `github.ref` is
    not `refs/heads/main`, and every other job waits on it. `workflow_dispatch` lets the caller pick
    any branch, and the release job holds `contents: write`, `packages: write` and an OIDC identity.
-2. **Verify.** `test` (clippy, then `cargo test --workspace --locked` with
-   `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1`) and `audit` (`cargo deny check`: advisories, licences,
-   bans and sources). They are copies of the CI jobs rather than a call into `ci.yaml`, so a release
-   never depends on which pull request last ran CI, and `test` uses the pinned Rust toolchain
-   (`1.98.1`) the release builds with.
+2. **Verify.** `test` (clippy, then `cargo test --workspace --locked`) and `audit` (`cargo deny
+   check`: advisories, licences, bans and sources). They are copies of the CI jobs rather than a
+   call into `ci.yaml`, so a release never depends on which pull request last ran CI, and `test`
+   uses the pinned Rust toolchain (`1.98.1`) the release builds with.
 3. **Resolve the version**, as in [Versioning](#versioning).
 4. **Check the tag.** If `refs/tags/<version>` already exists on the remote, the run continues only
    when it points at `HEAD`, as a recovery. Pointing anywhere else is a hard failure. The tag is
@@ -153,7 +152,10 @@ them:
    `trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --platform <platform> <image>@<digest>`.
    A finding fails the run, with no tag anywhere. `--ignore-unfixed` is not used: a vulnerability
    with no fix yet still blocks, unless it is accepted in [`.trivyignore`](../.trivyignore) with a
-   reason and an expiry date.
+   reason and an expiry date. Then **smoke-test the version stamps**: each platform image, run from
+   the scanned digest (arm64 under QEMU), must print `<version> <short commit> <build date>` for
+   `--version`. A binary built without its build arguments prints the `dev` defaults and fails the
+   run, still with no tag anywhere.
 4. **Gate the tag.** The highest released version is read again, from the remote, because a tag can
    arrive from outside the workflow while it builds. A fresh release that is no longer the highest
    fails with nothing pushed.
@@ -221,7 +223,8 @@ Either way the tag check sees the tag on `HEAD`, and the mode decision picks one
   is built, copied or attested again. It is never compared with a rebuilt index, because a rebuilt
   index never matches (see above). Its platform images are scanned, and findings are reported as
   warnings rather than failures: the image is already published and immutable, and failing would
-  only leave the release assets unfinished.
+  only leave the release assets unfinished. Its version stamps are smoke-tested the same way, and
+  a mismatch does fail the run.
 - **Recovery, publish**, when the tag exists and `:<version>` does not: the earlier run failed
   between pushing the tag and tagging the image. Fresh steps 1 to 3 and 7 to 9 run: a new build,
   scanned, copied, checked, attested, signed and tagged. Nothing is compared with what an earlier
@@ -339,8 +342,9 @@ digest together. `svu` (`SVU_VERSION` with its `SVU_SHA256`) and Trivy (`TRIVY_V
 reason. Pinning Trivy does not pin what it knows: its vulnerability database is fetched at run time,
 which is the point of scanning at release time.
 
-**The Rust build is pinned the same way.** Every job takes Rust `1.98.1` from
-`dtolnay/rust-toolchain`, the version `rust-toolchain.toml` names. The release job gets zig and
+**The Rust build is pinned the same way.** Every job installs Rust with
+`rustup toolchain install`, which reads the release, the components and the targets from
+`rust-toolchain.toml` (`1.98.1`). The release job gets zig and
 cargo-zigbuild from [`.github/actions/setup-zigbuild`](../.github/actions/setup-zigbuild/action.yaml),
 which downloads their release archives and checks each against a sha256 before using it, at the
 versions the Dockerfile's build stage pins (`ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`). That stage

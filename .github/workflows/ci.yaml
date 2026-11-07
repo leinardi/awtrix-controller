@@ -23,17 +23,18 @@ jobs:
   pre-commit-all:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # What dtolnay/rust-toolchain exported to every later step of the job.
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # For the cargo-fmt, cargo-clippy and cargo-machete hooks, and the docs-links hook (a meta-test).
+      # For the cargo-fmt, cargo-clippy and cargo-machete hooks.
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.98.1
-          components: clippy, rustfmt
+        run: rustup toolchain install --no-self-update
 
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -249,33 +250,24 @@ jobs:
 
   # The Rust workspace: the same workspace-wide commands as make verify-rust and the pre-commit
   # hooks, plus cargo-deny (advisories, licences, bans and sources; the advisory database needs the
-  # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's; with
-  # AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 a tool they drive (droast, shellcheck) that is missing fails
-  # them instead of skipping them.
+  # network). The toolchain matches rust-toolchain.toml. The tests include the meta crate's.
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # What dtolnay/rust-toolchain exported to every later step of the job.
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.98.1
-          components: clippy, rustfmt
+        run: rustup toolchain install --no-self-update
 
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-      # The meta crate's Dockerfile test drives droast, whose ShellCheck bridge is required.
-      - name: Set up droast
-        uses: ./.github/actions/setup-droast
-
-      # droast's ShellCheck bridge runs the shellcheck on PATH: the pinned one, not the runner's.
-      - name: Set up ShellCheck
-        uses: ./.github/actions/setup-shellcheck
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -284,8 +276,6 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run the tests
-        env:
-          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
         run: cargo test --workspace --locked
 
       - name: Check Rust documentation

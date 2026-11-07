@@ -111,34 +111,25 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # What dtolnay/rust-toolchain exported to every later step of the job.
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.98.1
-          components: clippy, rustfmt
+        run: rustup toolchain install --no-self-update
 
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-      # The meta-tests drive droast, whose ShellCheck bridge is required.
-      - name: Set up droast
-        uses: ./.github/actions/setup-droast
-
-      # droast's ShellCheck bridge runs the shellcheck on PATH: the pinned one, not the runner's.
-      - name: Set up ShellCheck
-        uses: ./.github/actions/setup-shellcheck
 
       - name: Lint with clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run the test suite
-        env:
-          AWTRIX_CONTROLLER_REQUIRE_TOOLS: "1"
         run: cargo test --workspace --locked
 
   audit:
@@ -164,6 +155,10 @@ jobs:
       - audit
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # What dtolnay/rust-toolchain exported to every later step of the job.
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
     # Created on first run with no protection rules, which changes nothing by
     # itself. Add a deployment branch rule limiting it to `main`, and required
     # reviewers if a release should need a second pair of eyes - docs/release.md.
@@ -187,10 +182,7 @@ jobs:
       # rebuilds with the same one, which is what makes its binaries
       # byte-identical.
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: 1.98.1
-          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+        run: rustup toolchain install --no-self-update
 
       - name: Set up cargo-zigbuild
         uses: ./.github/actions/setup-zigbuild
@@ -595,6 +587,38 @@ jobs:
           done
           echo "platforms=${SCANNED[*]}" >> "$GITHUB_OUTPUT"
 
+      # The arm64 image runs on the amd64 runner through binfmt emulation. The registered
+      # emulator image is pinned by index digest, because the action's default is the
+      # moving `latest` tag.
+      - name: Set up QEMU
+        if: steps.mode.outputs.build == 'true' || steps.mode.outputs.mode == 'reuse'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+
+      # What the image prints for --version is what the build stamped into it: the
+      # version, the short commit and the build date. A binary built without its
+      # build args reports the "dev" defaults, and this fails the run before any tag
+      # exists. Each platform runs from the digest that was just scanned.
+      - name: Smoke-test the version stamps of both platform images
+        if: steps.mode.outputs.build == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.short_sha }}
+          DATE: ${{ steps.version.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          for platform in ${PLATFORMS//,/ }; do
+            GOT=$(docker run --rm --platform "$platform" "$LOCAL_IMAGE@$DIGEST" --version)
+            if [ "$GOT" != "$VERSION $COMMIT $DATE" ]; then
+              echo "The $platform image prints '$GOT', want '$VERSION $COMMIT $DATE'." >&2
+              exit 1
+            fi
+            echo "$platform: $GOT"
+          done
+
       # The last look at the tags before the point of no return. Concurrency
       # serializes the workflow, but a tag can also arrive from outside it, and
       # the check in the version step ran before several minutes of building.
@@ -804,6 +828,26 @@ jobs:
             if ! trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --platform "$platform" "$IMAGE_REPO@$DIGEST"; then
               echo "::warning::The reused $IMAGE_REPO@$DIGEST ($platform) has HIGH or CRITICAL findings, or could not be scanned. It is already published and was not changed; consider releasing a new version."
             fi
+          done
+
+      # A reused image is not rebuilt, so its stamps are read the same way, from the
+      # published digest, before the run goes on to the GitHub release.
+      - name: Smoke-test the version stamps of the reused image
+        if: ${{ !inputs.dry_run && steps.mode.outputs.mode == 'reuse' }}
+        env:
+          DIGEST: ${{ steps.sign.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.short_sha }}
+          DATE: ${{ steps.version.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          for platform in ${PLATFORMS//,/ }; do
+            GOT=$(docker run --rm --platform "$platform" "$IMAGE_REPO@$DIGEST" --version)
+            if [ "$GOT" != "$VERSION $COMMIT $DATE" ]; then
+              echo "The reused $platform image prints '$GOT', want '$VERSION $COMMIT $DATE'." >&2
+              exit 1
+            fi
+            echo "$platform: $GOT"
           done
 
       - name: Tag the image with the version
