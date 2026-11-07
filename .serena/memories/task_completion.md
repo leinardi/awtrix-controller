@@ -11,5 +11,5 @@ every row. Most common:
 - `.github/**`: `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test
   toolchain --test dockerfiles`.
 - `meta/**`: `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`.
-- `**/*.md`: `cargo test --locked -p meta --test docs`; prose wraps at 100 columns.
+- `**/*.md`: `pre-commit run lychee --all-files`; prose wraps at 100 columns.
 - New file: MIT license header with the year of first commit (`scripts/check-license-headers.sh`).

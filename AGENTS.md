@@ -36,7 +36,6 @@ Single test (a unit test is named by its module path, an integration test by its
 ```bash
 cargo test --locked -p awtrix-controller --lib scheduler::tests::job_fires_once_then_reschedules
 cargo test --locked -p awtrix-controller --test broker
-cargo test --locked -p meta --test docs
 ```
 
 The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run,
@@ -82,9 +81,9 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   the rustdoc gate, no vacuous flags),
   `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
   stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
-  `docs.rs` (Markdown links), `license_headers.rs` and `suppressions.rs` (the two scripts below),
-  and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
-  `repo-meta` checks with this repository's parameters, beside the rules that are its own.
+  `license_headers.rs` and `suppressions.rs` (the two scripts below), and `workspace_lints.rs`
+  (every member opts into the workspace lints). Most run rust-common's `repo-meta` checks with this
+  repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the
   gate of droast and shellcheck (testenv-core's `toolgate`).
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, the `# syntax` frontend by
@@ -170,7 +169,7 @@ Run before considering an edit done. `make check` applies to every row.
 | `.github/workflows/**`, `.github/actions/**` | `pre-commit run actionlint --all-files`, `cargo test --locked -p meta --test toolchain --test dockerfiles` |
 | `.pre-commit-config.yaml`, `Makefile`, `.mk/**` | `make check`, `cargo test --locked -p meta --test toolchain`, `make help` |
 | `meta/**` | `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta` |
-| `**/*.md` | `cargo test --locked -p meta --test docs`; prose wraps at 100 columns (markdownlint) |
+| `**/*.md` | `pre-commit run lychee --all-files` (offline links and fragments); prose wraps at 100 columns (markdownlint) |
 
 ## Rust coding rules
 

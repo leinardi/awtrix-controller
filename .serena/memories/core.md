@@ -20,7 +20,7 @@ rules, commit types. Read it before any change; memories below only add what it 
   `src/weather/` (what is published); `src/scheduler/` + `src/clock/` (injectable time,
   `resolve_local`); `src/model/` Awtrix JSON payloads; `src/logger/` tracing subscriber.
 - `tests/` integration (broker over sockets, whole run); `meta/` workspace member with the repo
-  meta-tests (toolchain pins, Dockerfile, docs links, license headers, suppression ratchet,
+  meta-tests (toolchain pins, Dockerfile, license headers, suppression ratchet,
   workspace lints).
 - User-facing contract: README (incl. "Migrating from 1.x") + `deployments/config.sample.yaml`.
 

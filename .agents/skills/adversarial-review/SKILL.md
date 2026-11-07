@@ -229,7 +229,7 @@ Do not skim for style. Run these passes, each with a "how would I make this fail
 - **Contract drift**: does the code do what the commit message / PR / issue claims? A flag,
   environment variable, config key, topic, payload field, exit code or error text changed
   without updating every consumer and the docs (§5 (e)).
-- **Meta-tests**: a test under `meta/tests/` (pins, vacuous flags, Dockerfile invariants, docs links,
+- **Meta-tests**: a test under `meta/tests/` (pins, vacuous flags, Dockerfile invariants,
   the license and suppression scripts) guards a claim about the repository rather than the
   product. Make the guarded thing go wrong and check the test notices: a test that passes because
   its input is empty, its file list matched nothing, its rule never ran, its tool was skipped

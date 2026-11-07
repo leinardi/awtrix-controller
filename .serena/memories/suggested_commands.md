@@ -5,7 +5,7 @@
   `make verify` (build, fmt check, clippy, tests).
 - Single test: `cargo test --locked -p awtrix-controller --lib <module>::tests::<name>`; an
   integration file: `cargo test --locked -p awtrix-controller --test broker`; a meta-test:
-  `cargo test --locked -p meta --test docs`.
+  `cargo test --locked -p meta --test toolchain`.
 - Meta-tests requiring tools: `AWTRIX_CONTROLLER_REQUIRE_TOOLS=1 cargo test --locked -p meta`
   (missing droast or shellcheck becomes a failure instead of a skip).
 - `make check` (pre-commit, all files) / `make check-stage` (staged only).
