@@ -78,9 +78,9 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
   version everywhere, the CI toolchain steps, the zig, cargo-zigbuild, droast and ShellCheck pins,
-  the rustdoc gate, no vacuous flags),
-  `dockerfiles.rs` (the image's stages, downloads, platforms, labels and frontend, the version
-  stamps against `src/version.rs`, the Makefile and `rust.mk`, and droast's label schema),
+  no vacuous flags),
+  `dockerfiles.rs` (the image's frontend and stages, the label build arguments, and droast's label
+  schema),
   and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
   `repo-meta` checks with this repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test, and `TOOLS`, the

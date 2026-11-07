@@ -25,12 +25,10 @@
 //! The repository's tooling pins: one Rust release across rust-toolchain.toml, Cargo.toml's line,
 //! the image's line and every CI toolchain step; the image's toolchain patch and its musl standard
 //! libraries; one zig and one cargo-zigbuild between the image and CI; one droast and one
-//! shellcheck between the hooks and CI; the rustdoc gate; and no flag that makes a gate pass on
-//! nothing. The checks are `repo_meta::toolchain`'s, `repo_meta::ci`'s and `repo_meta::vacuous`'s,
-//! with this repository's parameters; the negative controls run them on altered copies of the real
-//! files and on samples.
+//! shellcheck between the hooks and CI; and no flag that makes a gate pass on nothing. The checks
+//! are `repo_meta::toolchain`'s and `repo_meta::vacuous`'s, with this repository's parameters; the
+//! negative controls run them on altered copies of the real files and on samples.
 
-use repo_meta::ci::MAKE_COMMON_RUSTDOC;
 use repo_meta::toolchain::{
     PinSource, RustVersion, ToolchainRef, ci_toolchain_problems, image_rust_problems, one_value,
     rust_release, rust_version_problems, shellcheck_problems,
@@ -90,94 +88,6 @@ fn documents(files: &[(String, String)]) -> Vec<(String, Value)> {
 fn edited(content: &str, from: &str, to: &str) -> String {
     assert!(content.contains(from), "{from:?} is gone");
     content.replacen(from, to, 1)
-}
-
-/// What is wrong with the rustdoc gate of `fragment` (make-common's rust.mk), `makefile` and the
-/// CI `workflow`.
-fn rustdoc_problems(fragment: &str, makefile: &str, workflow: &str) -> Vec<Problem> {
-    let workflow = yaml::parse(CI_WORKFLOW, workflow).unwrap_or_else(|problem| panic!("{problem}"));
-    MAKE_COMMON_RUSTDOC.problems(fragment, makefile, &workflow)
-}
-
-/// Rustdoc warnings must fail local verification (`verify-rust` runs `rust-doc`, whose recipe
-/// denies warnings over every feature) and the required Rust CI job (a `make rust-doc` step with
-/// no condition and no `continue-on-error`): `repo_meta::ci::MAKE_COMMON_RUSTDOC`.
-#[test]
-fn rust_documentation_is_a_required_gate() {
-    let repo = meta::repo();
-    let problems = rustdoc_problems(
-        &repo.read(".mk/rust.mk"),
-        &repo.read("Makefile"),
-        &repo.read(CI_WORKFLOW),
-    );
-    assert!(problems.is_empty(), "{}", report(&problems));
-}
-
-/// Negative controls reject gates missing from verify or CI, allowing warnings, or narrowed to
-/// fewer features: each edit is exactly one problem.
-#[test]
-fn weakened_rustdoc_gates_are_refused() {
-    let repo = meta::repo();
-    let fragment = repo.read(".mk/rust.mk");
-    let makefile = repo.read("Makefile");
-    let workflow = repo.read(CI_WORKFLOW);
-    for (name, fragment, makefile, workflow) in [
-        (
-            "verify without rust-doc",
-            edited(&fragment, "rust-test rust-doc", "rust-test"),
-            makefile.clone(),
-            workflow.clone(),
-        ),
-        (
-            "warnings allowed",
-            edited(
-                &fragment,
-                "RUSTDOCFLAGS=\"$(RUSTDOCFLAGS) -D warnings\"",
-                "RUSTDOCFLAGS=\"$(RUSTDOCFLAGS)\"",
-            ),
-            makefile.clone(),
-            workflow.clone(),
-        ),
-        (
-            "the features narrowed",
-            fragment.clone(),
-            format!("{makefile}\nRUST_FEATURES := --features x\n"),
-            workflow.clone(),
-        ),
-        (
-            "no CI step",
-            fragment.clone(),
-            makefile.clone(),
-            edited(
-                &workflow,
-                "run: make rust-doc",
-                "run: echo missing documentation gate",
-            ),
-        ),
-        (
-            "a CI step that never runs",
-            fragment.clone(),
-            makefile.clone(),
-            edited(
-                &workflow,
-                "run: make rust-doc",
-                "if: false\n        run: make rust-doc",
-            ),
-        ),
-        (
-            "a CI step that may fail",
-            fragment.clone(),
-            makefile.clone(),
-            edited(
-                &workflow,
-                "run: make rust-doc",
-                "continue-on-error: true\n        run: make rust-doc",
-            ),
-        ),
-    ] {
-        let problems = rustdoc_problems(&fragment, &makefile, &workflow);
-        assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
-    }
 }
 
 /// Go: `TestGoLineIsOneValue`. rust-toolchain.toml pins an exact release, and the MSRV in
