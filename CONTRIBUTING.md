@@ -7,14 +7,15 @@
 - [cargo-deny](https://github.com/EmbarkStudios/cargo-deny), for `make audit-deps` and
   `make rust-deny` (`cargo install --locked cargo-deny`)
 - [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) and [zig](https://ziglang.org/),
-  only to build the static musl binaries the releases ship outside Docker (with the target added by
-  `rustup target add x86_64-unknown-linux-musl`)
-- Docker, for building the container image
+  only to build the static musl binaries the releases ship outside Docker (`make dist-static`; the
+  musl targets come with `rust-toolchain.toml`)
+- Docker and a `dhi.io` login (`docker login dhi.io`), for building the container image; QEMU
+  (binfmt) to run the arm64 image tests on another architecture
 - [Dockerfile Roast](https://github.com/immanuwell/dockerfile-roast) (`droast`): pre-commit builds
   its own with `cargo` at the rev `.pre-commit-config.yaml` pins
-- [ShellCheck](https://github.com/koalaman/shellcheck) on `PATH`, at the release
-  `.github/actions/setup-shellcheck` pins: droast's ShellCheck bridge is required, so the droast
-  hook needs it
+- [ShellCheck](https://github.com/koalaman/shellcheck) on `PATH`, at the `shellcheck-py` rev's
+  release in `.pre-commit-config.yaml` (CI installs it with gh-composite-actions'
+  `setup-shellcheck`): droast's ShellCheck bridge is required, so the droast hook needs it
 - [`pre-commit`](https://pre-commit.com/): install the hooks once with `make pre-commit-install`. It
   installs both the `pre-commit` and the `commit-msg` hooks, so commit messages are checked when you
   commit, not when the release runs.
@@ -30,7 +31,9 @@ make verify          # rust-build, rust-fmt-check, rust-clippy and rust-test in 
 make rust-run ARGS="--config config.yaml"  # run with the version strings set from git
 make audit-deps      # cargo-deny against the RustSec advisories (network required)
 make rust-deny       # every cargo-deny check: advisories, licences, bans, sources (network required)
-make docker-build    # the container image, for the host's architecture
+make dist-static     # the static release binaries in dist/, as the release builds them
+make image-build-prebuilt image-test   # the image from those binaries, and its full test suite
+make docker-build    # the container image's default target, which compiles the binary itself
 ```
 
 ## Linting
@@ -40,8 +43,8 @@ make check         # the full pre-commit suite on every file (rustfmt, clippy, d
 make check-stage   # the same, on the staged files only
 ```
 
-CI runs the same hooks, the tests and cargo-deny on every pull request and every push to `main`
-(`.github/workflows/ci.yaml`).
+CI runs the same hooks, the tests, cargo-deny and the image tests on every pull request and every
+push to `main` (`.github/workflows/ci.yaml`).
 
 Every source file carries the MIT license header (the `check-license-headers` hook).
 

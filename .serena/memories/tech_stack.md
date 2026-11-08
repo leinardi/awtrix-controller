@@ -14,7 +14,11 @@
 - Build/infra: Makefile + `.mk/*.mk`; make-common snippets
   (`.mk/{docker,help,password,pre-commit}.mk`) are vendored from `leinardi/make-common` — never
   hand-edit, refresh with `make mk-common-update`.
-- Image: `dhi.io` hardened bases (`dhi.io/rust` debian build stage, `dhi.io/static` runtime),
-  multi-arch amd64/arm64, `# syntax` frontend pinned by digest. Pulling needs a `dhi.io` login.
-- Release: svu derives the version from Conventional Commits; cosign keyless signing + provenance
-  attestations (see `docs/release.md`).
+- Image: `dhi.io` hardened bases pinned by tag, deliberately not by digest (dhi.io rebuilds too
+  often): `dhi.io/rust` debian build stage, `dhi.io/static` base. Multi-arch amd64/arm64, `# syntax`
+  frontend pinned by digest. Two targets:
+  `runtime` (default, compiles in Docker) and `prebuilt` (COPYs `dist/awtrix-controller-linux-<arch>`
+  from `make dist-static`), which CI and the release build. Pulling needs a `dhi.io` login.
+- Release: gh-composite-actions (release-version with svu, require-ci-green, release-mode,
+  trivy-gate at the latest Trivy); cosign keyless signing + provenance attestations (see
+  `docs/release.md`).

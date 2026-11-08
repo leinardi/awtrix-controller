@@ -204,13 +204,19 @@ grace period, awaits a fetch, or kicks sessions one by one breaks the budget.
   seven OCI labels `droast.toml` requires, and runs on `dhi.io/static`, relying on its non-root
   default user (there is no explicit `USER`). The build stage cross-compiles a static musl binary
   with cargo-zigbuild, and every download in it (zig, `rust-std`) is checked against a sha256.
-  Adding root, a shell or a package manager to the runtime stage, a base on `latest` or with no
-  tag, or an unchecked download, is a finding; `meta/tests/dockerfiles.rs` pins these.
+  Adding root, a shell or a package manager to the base stage, a base on `latest` or with no tag,
+  a digest pin on a dhi.io base (they are tag-only on purpose: dhi.io rebuilds too often), or an
+  unchecked download, is a finding; `meta/tests/dockerfiles.rs` and
+  `check-pinned-bases` pin these. The `prebuilt` target must COPY the release asset unchanged, so
+  the image binary stays byte-identical to it (`scripts/image-test.sh` checks the sha256).
 - `docs/release.md` is the release contract: the `guard` job refuses any ref but `main`; the
   mode comes from fail-closed lookups (only "not found" reads as absent); the image is built
-  once, scanned by digest, copied with `skopeo copy --all --preserve-digests`, attested and
-  signed before it is tagged `:<version>`. Trivy exceptions live only in `.trivyignore`, with a
-  reason and an `exp:` date.
+  once, from the binaries the release built (or the published ones `release-mode` verified),
+  smoke-tested and scanned by digest, copied with `skopeo copy --all --preserve-digests`, attested
+  and signed before it is tagged `:<version>`. The release runs no test suite of its own: it gates on
+  CI of the exact commit (`require-ci-green`), so a change that weakens CI's `image` or `rust` job
+  weakens the release. Trivy exceptions live only in `.trivyignore.yaml`, with a statement and an
+  `expired_at`.
 - Every workflow starts at `permissions: contents: read`; actions are pinned to a full commit
   SHA.
 - The commit type decides the release bump (`svu`): check that it matches whether the change
@@ -312,7 +318,7 @@ confirmed finding:
 | any `**/*.rs` | `make verify` (build, rustfmt check, clippy with `-D warnings`, tests), then `make check` |
 | `Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify` and `make rust-deny` (cargo-deny; network required) |
 | `deployments/docker/Dockerfile`, `droast.toml` | droast via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
-| `.github/scripts/**` | `bash .github/scripts/binary-attestation-status.test.sh` |
+| `scripts/image-test.sh`, `.mk/dist.mk`, `.mk/image.mk` | `make dist-static image-build-prebuilt image-test` (a `dhi.io` login) |
 | `meta/**`, `scripts/check-*.sh` | `cargo test --locked -p meta` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |
 | anything else | `make check` (pre-commit on all files) |
