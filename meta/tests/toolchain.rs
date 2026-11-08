@@ -23,10 +23,10 @@
  */
 
 //! The repository's tooling pins: every version written in more than one file is one value (the
-//! Rust line and the image's release, zig, cargo-zigbuild, `ShellCheck` and Trivy), and no
-//! flag makes a gate pass on nothing. The checks are `repo_meta::toolchain::one_value` over this
-//! repository's pin sources and `repo_meta::vacuous`'s; the negative controls run them on altered
-//! copies of the real files and on samples.
+//! Rust line and the image's release, zig, cargo-zigbuild and `ShellCheck`), Trivy is never pinned,
+//! and no flag makes a gate pass on nothing. The checks are `repo_meta::toolchain::one_value` over
+//! this repository's pin sources and `repo_meta::vacuous`'s; the negative controls run them on
+//! altered copies of the real files and on samples.
 
 use repo_meta::toolchain::{PinSource, one_value, rust_release};
 use repo_meta::vacuous::{AllowedFragment, VacuousFlags};
@@ -34,8 +34,6 @@ use repo_meta::{Problem, report};
 
 const DOCKERFILE: &str = "deployments/docker/Dockerfile";
 const RUST_TOOLCHAIN: &str = "rust-toolchain.toml";
-const SETUP_ZIGBUILD: &str = ".github/actions/setup-zigbuild/action.yaml";
-const SETUP_SHELLCHECK: &str = ".github/actions/setup-shellcheck/action.yaml";
 const PRE_COMMIT: &str = ".pre-commit-config.yaml";
 const CI_WORKFLOW: &str = ".github/workflows/ci.yaml";
 const RELEASE_WORKFLOW: &str = ".github/workflows/release.yaml";
@@ -44,14 +42,19 @@ const SCHEDULED_SCAN: &str = ".github/workflows/scheduled-scan.yaml";
 /// The `X.Y` line of the release in the `dhi.io/rust` tag of a `FROM`.
 const IMAGE_TAG_LINE: &str = r"(?mi)^[ \t]*FROM[ \t]+(?:--\S+[ \t]+)*dhi\.io/rust:(\d+\.\d+)\.\d+-";
 const ZIG_DOCKERFILE: &str = r"(?m)^ARG ZIG_VERSION=(\S+)$";
-const ZIG_ACTION: &str = r#"ZIG_VERSION:\s*"?([\d.]+)"#;
+/// The `zig-version` input of gh-composite-actions' setup-zigbuild, in CI and the release.
+const ZIG_ACTION: &str = r#"(?m)^\s*zig-version:\s*"?([\d.]+)"#;
 const ZIGBUILD_DOCKERFILE: &str = r"(?m)^ARG CARGO_ZIGBUILD_VERSION=(\S+)$";
-const ZIGBUILD_ACTION: &str = r#"CARGO_ZIGBUILD_VERSION:\s*"?([\d.]+)"#;
+const ZIGBUILD_ACTION: &str = r#"(?m)^\s*cargo-zigbuild-version:\s*"?([\d.]+)"#;
 /// shellcheck-py adds a fourth component of its own (v0.11.0.1), so only the first three count.
 const SHELLCHECK_HOOK: &str =
     r"repo: https://github\.com/shellcheck-py/shellcheck-py\s+rev:\s*v?(\d+\.\d+\.\d+)(?:\.\d+)?";
-const SHELLCHECK_ACTION: &str = r#"SHELLCHECK_VERSION:\s*"?v?(\d+\.\d+\.\d+)"#;
-const TRIVY: &str = r"(?m)^\s*TRIVY_VERSION:\s*(v[\d.]+)";
+/// The `version` input of every gh-composite-actions setup-shellcheck step in CI.
+const SHELLCHECK_ACTION: &str =
+    r"setup-shellcheck@[0-9a-f]{40}[^\n]*\n\s*with:\s*\n\s*version:\s*v?(\d+\.\d+\.\d+)";
+/// A Trivy version written down anywhere under .github: trivy-gate's `trivy-version` input, a
+/// `TRIVY_VERSION`, or a setup-trivy step of its own.
+const TRIVY_PIN: &str = r"(?m)trivy-version:|TRIVY_VERSION|aquasecurity/setup-trivy";
 
 /// Every YAML file under .github, with its text; none is a failure, since the scans would check
 /// nothing.
@@ -88,8 +91,7 @@ fn read(edit: Edit, file: &str) -> String {
 /// Every pin the repository writes in more than one file, each one value: the Rust line
 /// (rust-toolchain.toml, Cargo's `rust-version`, the image's tag), the image's exact Rust release
 /// (its tag and `ARG RUST_VERSION`, the release the musl standard libraries are downloaded for),
-/// zig, cargo-zigbuild, `ShellCheck` and Trivy. `edit` is applied to the content of each
-/// file read.
+/// zig, cargo-zigbuild and `ShellCheck`. `edit` is applied to the content of each file read.
 fn pin_problems(edit: Edit) -> Vec<Problem> {
     let dockerfile = read(edit, DOCKERFILE);
     let mut problems = one_value(
@@ -113,7 +115,8 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
         "zig",
         &[
             source(edit, DOCKERFILE, ZIG_DOCKERFILE),
-            source(edit, SETUP_ZIGBUILD, ZIG_ACTION),
+            source(edit, CI_WORKFLOW, ZIG_ACTION),
+            source(edit, RELEASE_WORKFLOW, ZIG_ACTION),
         ],
         &[],
     ));
@@ -121,7 +124,8 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
         "cargo-zigbuild",
         &[
             source(edit, DOCKERFILE, ZIGBUILD_DOCKERFILE),
-            source(edit, SETUP_ZIGBUILD, ZIGBUILD_ACTION),
+            source(edit, CI_WORKFLOW, ZIGBUILD_ACTION),
+            source(edit, RELEASE_WORKFLOW, ZIGBUILD_ACTION),
         ],
         &[],
     ));
@@ -129,15 +133,7 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
         "ShellCheck",
         &[
             source(edit, PRE_COMMIT, SHELLCHECK_HOOK),
-            source(edit, SETUP_SHELLCHECK, SHELLCHECK_ACTION),
-        ],
-        &[],
-    ));
-    problems.extend(one_value(
-        "Trivy",
-        &[
-            source(edit, RELEASE_WORKFLOW, TRIVY),
-            source(edit, SCHEDULED_SCAN, TRIVY),
+            source(edit, CI_WORKFLOW, SHELLCHECK_ACTION),
         ],
         &[],
     ));
@@ -145,9 +141,9 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
 }
 
 /// The pins hold: rust-toolchain.toml pins an exact release and the MSRV in Cargo.toml and the
-/// image's tag are its line; the image's tag and `ARG RUST_VERSION` are one release; the release
-/// binaries and the image are built with the same zig and cargo-zigbuild; the `ShellCheck` CI installs is
-/// the release the shellcheck-py hook wraps; and the release and the scheduled scan run one Trivy.
+/// image's tag are its line; the image's tag and `ARG RUST_VERSION` are one release; CI's and the
+/// release's binaries and the image's build stage are built with the same zig and cargo-zigbuild;
+/// and the `ShellCheck` CI installs is the release the shellcheck-py hook wraps.
 #[test]
 fn pins_are_one_value() {
     let problems = pin_problems(&|_, content| content);
@@ -241,40 +237,77 @@ fn tool_pin_rules_refuse_each_edit() {
         ),
         (
             "zig in CI",
-            SETUP_ZIGBUILD,
-            "ZIG_VERSION:".to_owned(),
-            "ZIG_VERSION_GONE:".to_owned(),
+            CI_WORKFLOW,
+            "zig-version:".to_owned(),
+            "zig-version-gone:".to_owned(),
             1,
         ),
         (
-            "cargo-zigbuild",
-            SETUP_ZIGBUILD,
-            "CARGO_ZIGBUILD_VERSION: \"".to_owned(),
-            "CARGO_ZIGBUILD_VERSION: \"9".to_owned(),
+            "zig in the release",
+            RELEASE_WORKFLOW,
+            "zig-version: ".to_owned(),
+            "zig-version: 9".to_owned(),
+            1,
+        ),
+        (
+            "cargo-zigbuild in CI",
+            CI_WORKFLOW,
+            "cargo-zigbuild-version: ".to_owned(),
+            "cargo-zigbuild-version: 9".to_owned(),
+            1,
+        ),
+        (
+            "cargo-zigbuild in the release",
+            RELEASE_WORKFLOW,
+            "cargo-zigbuild-version:".to_owned(),
+            "cargo-zigbuild-version-gone:".to_owned(),
             1,
         ),
         (
             "ShellCheck",
-            SETUP_SHELLCHECK,
-            "SHELLCHECK_VERSION: v".to_owned(),
-            "SHELLCHECK_VERSION: v9.".to_owned(),
-            1,
-        ),
-        (
-            "Trivy in the release",
-            RELEASE_WORKFLOW,
-            "TRIVY_VERSION: v".to_owned(),
-            "TRIVY_VERSION: v9.".to_owned(),
-            1,
-        ),
-        (
-            "Trivy in the scheduled scan",
-            SCHEDULED_SCAN,
-            "TRIVY_VERSION:".to_owned(),
-            "TRIVY_VERSION_GONE:".to_owned(),
+            CI_WORKFLOW,
+            "version: v0.".to_owned(),
+            "version: v9.0.".to_owned(),
             1,
         ),
     ]);
+}
+
+/// The Trivy pins under .github, one problem per file that writes one.
+fn trivy_pin_problems(files: &[(String, String)]) -> Vec<Problem> {
+    let pin = repo_meta::pattern(TRIVY_PIN);
+    files
+        .iter()
+        .filter(|(_, content)| pin.is_match(content))
+        .map(|(file, _)| {
+            Problem::at(
+                file,
+                "pins Trivy: trivy-gate installs its latest release, so every scan runs the newest \
+                 checks",
+            )
+        })
+        .collect()
+}
+
+/// Trivy is never pinned: every scan is trivy-gate's, at its default `latest`, and no workflow
+/// installs a Trivy of its own.
+#[test]
+fn trivy_is_never_pinned() {
+    let problems = trivy_pin_problems(&github_yaml());
+    assert!(problems.is_empty(), "{}", report(&problems));
+}
+
+/// The negative control: each way of pinning Trivy is found, in the file that writes it.
+#[test]
+fn trivy_pins_are_recognized() {
+    for sample in [
+        "        with:\n          trivy-version: 0.76.2\n",
+        "env:\n  TRIVY_VERSION: v0.76.2\n",
+        "      - uses: aquasecurity/setup-trivy@0000000000000000000000000000000000000000 # v0.3.1\n",
+    ] {
+        let problems = trivy_pin_problems(&[(SCHEDULED_SCAN.to_owned(), sample.to_owned())]);
+        assert_eq!(problems.len(), 1, "{sample:?}: {}", report(&problems));
+    }
 }
 
 /// The flags no gate may carry: the core set, the Rust set with the rule that clippy denies
@@ -293,12 +326,18 @@ const ALLOWED: &[AllowedFragment<'static>] = &[
         fragment: r#"{ grep -E "$RELEASE_TAG_REGEX" || true; }"#,
         reason: "a tag filter that may select nothing",
     },
-    // The first release has no HEAD^ history with tags; the empty answer means "no previous
-    // release", which the step handles.
+    // pre-commit-all restores the rust job's Rust cache and never saves it, so one job writes it.
+    AllowedFragment {
+        file: CI_WORKFLOW,
+        fragment: "save-if: false",
+        reason: "a restore-only Rust cache",
+    },
+    // A recovery that reuses a published image scans it again, but cannot change it: its findings
+    // are reported as a warning by the step after, not a failure of the publish.
     AllowedFragment {
         file: RELEASE_WORKFLOW,
-        fragment: r#"{ git tag --merged "HEAD^" 2>/dev/null || true; }"#,
-        reason: "the previous release lookup on a first release",
+        fragment: "continue-on-error: true # findings in an image already published are warnings",
+        reason: "the scan of a reused, already published image",
     },
 ];
 
@@ -370,5 +409,23 @@ fn vacuous_flags_are_recognized() {
         hits(RELEASE_WORKFLOW, "make rust-test || true"),
         1,
         "an unrelated || true is allowed in release.yaml"
+    );
+
+    let reuse_scan =
+        "        continue-on-error: true # findings in an image already published are warnings";
+    assert_eq!(
+        hits(RELEASE_WORKFLOW, reuse_scan),
+        0,
+        "the reused image's scan is not allowed in release.yaml"
+    );
+    assert_eq!(
+        hits(CI_WORKFLOW, reuse_scan),
+        1,
+        "the reused image's scan is allowed outside release.yaml"
+    );
+    assert_eq!(
+        hits(RELEASE_WORKFLOW, "        continue-on-error: true"),
+        1,
+        "another continue-on-error is allowed in release.yaml"
     );
 }
