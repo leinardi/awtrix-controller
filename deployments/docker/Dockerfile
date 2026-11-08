@@ -28,9 +28,19 @@
 # of this header. Dependabot's docker ecosystem does not update it: bump it by hand
 # (docs/release.md).
 #
-# Base images are pinned by tag, not by digest: dhi.io republishes its tags
-# often to ship security fixes, and a rebuild should pick those up. Every
-# release build is scanned, so a newer base never ships unscanned.
+# The dhi.io bases are pinned by an explicit tag, deliberately not by digest: dhi.io rebuilds its
+# tags too often (security fixes) for a digest pin to be worth following by hand, and a rebuild
+# picks those fixes up. Each is one literal FROM, so Dependabot's docker ecosystem can move the tag
+# (it does not read ARG defaults). Every release build is smoke-tested and scanned, and the release
+# notes record the base digest each platform was built on, read from the build's provenance.
+#
+# Two targets ship the same runtime stage on the same base:
+#   runtime (the default, last stage): the binary is cross-compiled in the build stage below. For
+#     local development: `make docker-build`.
+#   prebuilt: the binary is the release asset already built outside Docker (`make dist-static`),
+#     COPYed from the `dist` build context, so the image binary is byte for byte the attested
+#     release asset. CI and the release build this one: `make image-build-prebuilt`. The build
+#     stage, and so dhi.io/rust, is never used.
 
 ########################
 # build: cross-compile a static musl binary for the target platform on the build platform, with
@@ -112,16 +122,37 @@ RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-registry,sharing=lo
 	&& cp "target/${triple}/release/awtrix-controller" /out/awtrix-controller
 
 ########################
-# runtime: dhi.io hardened static base (distroless-style, no shell).
-# The binary is statically linked against musl, so no libc is required.
+# dist: the prebuilt target's binaries. Empty here: the build replaces this stage with the `dist`
+# directory (`--build-context dist=dist`), which holds the release assets
+# awtrix-controller-<os>-<arch>. Without that context the prebuilt target fails on the missing file
+# instead of pulling anything.
 ########################
-FROM dhi.io/static:20250419 AS runtime
+FROM scratch AS dist
+
+########################
+# base: dhi.io hardened static base (distroless-style, no shell), shared by both targets: the
+# entrypoint and the port. The binary is statically linked against musl, so no libc is required.
+########################
+FROM dhi.io/static:20250419 AS base
+
+# dhi.io/static defaults to a non-root user; the controller does not need root.
+
+# Document the MQTT port
+EXPOSE 1883
+
+ENTRYPOINT ["/usr/local/bin/awtrix-controller"]
+
+########################
+# prebuilt: the release asset of the target platform, from the dist context, as the binary.
+########################
+FROM base AS prebuilt
 ARG VERSION="dev"
 ARG COMMIT="none"
 ARG DATE="unknown"
 
-# The seven OCI labels droast.toml requires; version, revision and created come from the same
-# build arguments the binary is stamped with.
+# The seven OCI labels droast.toml requires, the same in both targets (meta/tests/dockerfiles.rs):
+# droast reads the default target's own. Version, revision and created come from the same build
+# arguments the binary is stamped with.
 LABEL org.opencontainers.image.title="awtrix-controller" \
 	org.opencontainers.image.description="Awtrix3 MQTT Controller" \
 	org.opencontainers.image.source="https://github.com/leinardi/awtrix-controller" \
@@ -130,12 +161,27 @@ LABEL org.opencontainers.image.title="awtrix-controller" \
 	org.opencontainers.image.created="${DATE}" \
 	org.opencontainers.image.licenses="MIT"
 
-# Copy the binary
+ARG TARGETOS
+ARG TARGETARCH
+COPY --from=dist --chmod=0755 awtrix-controller-${TARGETOS}-${TARGETARCH} /usr/local/bin/awtrix-controller
+
+########################
+# runtime (default): the binary the build stage cross-compiled.
+########################
+FROM base AS runtime
+ARG VERSION="dev"
+ARG COMMIT="none"
+ARG DATE="unknown"
+
+# The seven OCI labels droast.toml requires, the same in both targets (meta/tests/dockerfiles.rs):
+# droast reads the default target's own. Version, revision and created come from the same build
+# arguments the binary is stamped with.
+LABEL org.opencontainers.image.title="awtrix-controller" \
+	org.opencontainers.image.description="Awtrix3 MQTT Controller" \
+	org.opencontainers.image.source="https://github.com/leinardi/awtrix-controller" \
+	org.opencontainers.image.version="${VERSION}" \
+	org.opencontainers.image.revision="${COMMIT}" \
+	org.opencontainers.image.created="${DATE}" \
+	org.opencontainers.image.licenses="MIT"
+
 COPY --from=build /out/awtrix-controller /usr/local/bin/awtrix-controller
-
-# dhi.io/static defaults to a non-root user; the exporter does not need root.
-
-# Document the MQTT port
-EXPOSE 1883
-
-ENTRYPOINT ["/usr/local/bin/awtrix-controller"]

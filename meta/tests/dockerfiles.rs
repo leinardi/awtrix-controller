@@ -22,16 +22,43 @@
  * SOFTWARE.
  */
 
-//! The shipped image: the pinned frontend and the two stages. The frontend and stage rules are
-//! `repo_meta::image`'s, with this repository's parameters, and their negative controls run them on
-//! altered copies of the real file. The `droast` hook enforces the label schema.
+//! The shipped image: the pinned frontend and the five stages. The frontend rule is
+//! `repo_meta::image`'s; the stage rules are this repository's own, since repo-meta's `BasePolicy`
+//! knows no internal stages, while two targets here share one base stage. Their negative controls
+//! run them on altered copies of the real file. The `droast` hook enforces the label schema.
 
-use repo_meta::dockerfile;
-use repo_meta::image::{BasePolicy, stage_problems, syntax_problems};
-use repo_meta::report;
+use repo_meta::dockerfile::{self, Stage};
+use repo_meta::image::syntax_problems;
+use repo_meta::{Problem, report};
 
 const SHIPPED_DOCKERFILE: &str = "deployments/docker/Dockerfile";
-const STAGES: &[&str] = &["build", "runtime"];
+/// The stages, in order. The last one is the default target, so `runtime` must stay last.
+const STAGES: &[&str] = &["build", "dist", "base", "prebuilt", "runtime"];
+/// The external bases: each stage's dhi.io repository, pinned by an explicit tag alone: deliberately
+/// not by digest, since dhi.io rebuilds its tags too often to follow by digest.
+const EXTERNAL: &[(&str, &str)] = &[("build", "dhi.io/rust"), ("base", "dhi.io/static")];
+/// The internal ones: the `dist` context's placeholder, and the two targets on the one base.
+const INTERNAL: &[(&str, &str)] = &[
+    ("dist", "scratch"),
+    ("prebuilt", "base"),
+    ("runtime", "base"),
+];
+/// What each target puts on the base: the release asset of the target platform, from the `dist`
+/// context, or the build stage's binary, both where the entrypoint, the image tests and the
+/// release read it.
+const BINARIES: &[(&str, &str)] = &[
+    (
+        "prebuilt",
+        "COPY --from=dist --chmod=0755 awtrix-controller-${TARGETOS}-${TARGETARCH} /usr/local/bin/awtrix-controller",
+    ),
+    (
+        "runtime",
+        "COPY --from=build /out/awtrix-controller /usr/local/bin/awtrix-controller",
+    ),
+];
+/// A well-formed digest, for the negative controls that pin a base by one.
+const ANY_DIGEST: &str = "@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const ENTRYPOINT: &str = r#"ENTRYPOINT ["/usr/local/bin/awtrix-controller"]"#;
 
 fn shipped() -> String {
     meta::repo().read(SHIPPED_DOCKERFILE)
@@ -46,14 +73,97 @@ fn syntax_directive_is_pinned() {
     assert!(problems.is_empty(), "{}", report(&problems));
 }
 
-/// Go: `TestShippedStages`. Exactly two named stages, in order, each from a literal base pinned by
-/// tag alone (`BasePolicy::TagOnly`; the build and runtime rules hold each to its dhi.io
-/// repository). The bases are deliberately not pinned by digest: dhi.io republishes its tags to
-/// ship security fixes, and every release build is scanned. A variable base, a missing tag or
-/// latest would leave the base unreviewable.
+/// The one stage named `name`, or a problem.
+fn named<'stages>(stages: &'stages [Stage], name: &str) -> Result<&'stages Stage, Problem> {
+    dockerfile::stage_named(SHIPPED_DOCKERFILE, stages, name)
+}
+
+/// Whether `stage` has the instruction `line`, as [`Stage::joined`] writes it.
+fn runs(stage: &Stage, line: &str) -> bool {
+    stage.joined().lines().any(|joined| joined == line)
+}
+
+/// What is wrong with the stages of `content`: they must be exactly [`STAGES`], in order; each
+/// external base a literal reference to its dhi.io repository by an explicit tag; each internal
+/// stage from its stage; each target's binary copied where the entrypoint reads it; both targets
+/// labelled alike (droast checks the default target's labels only); and the entrypoint set in the
+/// base, so both targets run it.
+fn stage_problems(content: &str) -> Vec<Problem> {
+    let stages = match dockerfile::parse(content) {
+        Ok(stages) => stages,
+        Err(error) => return vec![Problem::at(SHIPPED_DOCKERFILE, error.to_string())],
+    };
+    let mut problems = Vec::new();
+    let found: Vec<&str> = stages.iter().map(|stage| stage.name.as_str()).collect();
+    if found != STAGES {
+        problems.push(Problem::at(
+            SHIPPED_DOCKERFILE,
+            format!("has the stages {found:?}, want {STAGES:?}"),
+        ));
+    }
+    for &(name, repository) in EXTERNAL {
+        match named(&stages, name) {
+            Ok(stage)
+                if dockerfile::tag_pinned(&stage.image)
+                    && dockerfile::repository(&stage.image) == repository => {}
+            Ok(stage) => problems.push(Problem::at(
+                SHIPPED_DOCKERFILE,
+                format!(
+                    "stage {name:?} is FROM {:?}, want a literal {repository}:<tag>, with no digest",
+                    stage.image
+                ),
+            )),
+            Err(problem) => problems.push(problem),
+        }
+    }
+    for &(name, from) in INTERNAL {
+        match named(&stages, name) {
+            Ok(stage) if stage.image == from => {}
+            Ok(stage) => problems.push(Problem::at(
+                SHIPPED_DOCKERFILE,
+                format!("stage {name:?} is FROM {:?}, want FROM {from}", stage.image),
+            )),
+            Err(problem) => problems.push(problem),
+        }
+    }
+    for &(name, copy) in BINARIES {
+        match named(&stages, name) {
+            Ok(stage) if runs(stage, copy) => {}
+            Ok(_) => problems.push(Problem::at(
+                SHIPPED_DOCKERFILE,
+                format!("stage {name:?} does not run {copy:?}"),
+            )),
+            Err(problem) => problems.push(problem),
+        }
+    }
+    if let (Ok(prebuilt), Ok(runtime)) = (named(&stages, "prebuilt"), named(&stages, "runtime")) {
+        let (labels, wanted) = (dockerfile::labels(prebuilt), dockerfile::labels(runtime));
+        if wanted.is_empty() || labels != wanted {
+            problems.push(Problem::at(
+                SHIPPED_DOCKERFILE,
+                format!("the prebuilt target's labels {labels:?} are not the runtime target's {wanted:?}"),
+            ));
+        }
+    }
+    match named(&stages, "base") {
+        Ok(stage) if runs(stage, ENTRYPOINT) => {}
+        Ok(_) => problems.push(Problem::at(
+            SHIPPED_DOCKERFILE,
+            format!("stage \"base\" does not set {ENTRYPOINT}"),
+        )),
+        Err(problem) => problems.push(problem),
+    }
+    problems
+}
+
+/// Every base is pinned by an explicit tag in one literal FROM, which Dependabot moves; not by
+/// digest, on purpose (dhi.io rebuilds its tags too often), and every release build is
+/// smoke-tested and scanned. A variable base, a missing tag or `latest` would leave the base
+/// unreviewable. The two targets run on the one base stage, the prebuilt target with the
+/// release asset as its binary, and the default target stays last.
 #[test]
-fn shipped_stages_are_build_and_runtime() {
-    let problems = stage_problems(SHIPPED_DOCKERFILE, &shipped(), STAGES, BasePolicy::TagOnly);
+fn shipped_stages_are_pinned_and_share_the_base() {
+    let problems = stage_problems(&shipped());
     assert!(problems.is_empty(), "{}", report(&problems));
 }
 
@@ -64,6 +174,11 @@ fn edited(content: &str, from: &str, to: &str) -> String {
     content.replacen(from, to, 1)
 }
 
+/// `image` without its digest.
+fn without_digest(image: &str) -> &str {
+    image.split_once('@').map_or(image, |(tag, _)| tag)
+}
+
 /// A negative control of the file, frontend and stage rules: each edit of the real Dockerfile
 /// breaks one rule, and exactly one problem comes back.
 #[test]
@@ -72,11 +187,11 @@ fn file_frontend_and_stage_rules_refuse_each_edit() {
     let edit = |from: &str, to: &str| edited(&content, from, to);
 
     let syntax = dockerfile::syntax(&content).expect("the shipped Dockerfile has a frontend");
-    let unpinned = syntax
-        .split_once('@')
-        .map_or(syntax.as_str(), |(tag, _)| tag);
     for (name, broken) in [
-        ("a frontend by tag alone", edit(&syntax, unpinned)),
+        (
+            "a frontend by tag alone",
+            edit(&syntax, without_digest(&syntax)),
+        ),
         (
             "another frontend",
             edit("docker/dockerfile:", "example/dockerfile:"),
@@ -87,35 +202,85 @@ fn file_frontend_and_stage_rules_refuse_each_edit() {
         assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
     }
 
+    let stages = dockerfile::parse(&content).expect("the shipped Dockerfile parses");
+    let base = named(&stages, "base").expect("a base stage").image.clone();
+    let build = named(&stages, "build")
+        .expect("a build stage")
+        .image
+        .clone();
+    let repository = dockerfile::repository(&base);
     for (name, broken) in [
         (
-            "a runtime base by latest",
-            edit("FROM dhi.io/static:20250419", "FROM dhi.io/static:latest"),
-        ),
-        (
-            "a runtime base without a tag",
-            edit("FROM dhi.io/static:20250419", "FROM dhi.io/static"),
-        ),
-        (
             "a base by tag and digest",
-            edit(
-                "FROM dhi.io/static:20250419",
-                "FROM dhi.io/static:20250419@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            ),
+            edit(&base, &format!("{base}{ANY_DIGEST}")),
+        ),
+        (
+            "a base by digest alone",
+            edit(&base, &format!("{repository}{ANY_DIGEST}")),
+        ),
+        ("a base without a tag", edit(&base, repository)),
+        (
+            "a base by latest",
+            edit(&base, &format!("{repository}:latest")),
+        ),
+        (
+            "a base from another repository",
+            edit(&base, &base.replacen("dhi.io/static", "dhi.io/alpine", 1)),
+        ),
+        (
+            "a build base by tag and digest",
+            edit(&build, &format!("{build}{ANY_DIGEST}")),
         ),
         (
             "a variable base",
-            edit("FROM dhi.io/static:20250419", "FROM $BASE"),
+            edit(&format!("FROM {base}"), "FROM $BASE"),
         ),
-        ("a renamed stage", edit("AS runtime", "AS final")),
         (
-            "a third stage",
-            format!("{content}\nFROM dhi.io/static:20250419 AS extra\n"),
+            "a stage after the default target",
+            format!("{content}\nFROM base AS extra\n"),
+        ),
+        (
+            "the prebuilt target on another stage",
+            edit("FROM base AS prebuilt", "FROM build AS prebuilt"),
+        ),
+        (
+            "a dist stage that is an image",
+            edit("FROM scratch AS dist", &format!("FROM {base} AS dist")),
+        ),
+        (
+            "the prebuilt binary from the build stage",
+            edit(
+                "COPY --from=dist --chmod=0755 awtrix-controller-${TARGETOS}-${TARGETARCH}",
+                "COPY --from=build --chmod=0755 /out/awtrix-controller",
+            ),
+        ),
+        (
+            "the runtime binary elsewhere",
+            edit(
+                "COPY --from=build /out/awtrix-controller /usr/local/bin/awtrix-controller",
+                "COPY --from=build /out/awtrix-controller /awtrix-controller",
+            ),
+        ),
+        (
+            "a prebuilt label of its own",
+            edit(
+                "org.opencontainers.image.title=\"awtrix-controller\"",
+                "org.opencontainers.image.title=\"prebuilt\"",
+            ),
+        ),
+        (
+            "no entrypoint",
+            edit(ENTRYPOINT, r#"CMD ["/usr/local/bin/awtrix-controller"]"#),
         ),
     ] {
-        let problems = stage_problems(SHIPPED_DOCKERFILE, &broken, STAGES, BasePolicy::TagOnly);
+        let problems = stage_problems(&broken);
         assert_eq!(problems.len(), 1, "{name}: {}", report(&problems));
     }
+
+    // A renamed default target is three problems: the stage list, and the runtime stage's base and
+    // binary, which no stage holds any more.
+    let problems = stage_problems(&edit("AS runtime", "AS final"));
+    assert_eq!(problems.len(), 3, "a renamed stage: {}", report(&problems));
 }
 
 /// Go: `TestParseRejectsWhatTheAssertionsMustNotMiss`, the negative control for the reader: each
