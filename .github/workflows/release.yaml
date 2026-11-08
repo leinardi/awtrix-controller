@@ -113,11 +113,11 @@ jobs:
       # downloads fail.
       - name: Install svu
         if: inputs.version == ''
-        uses: leinardi/gh-composite-actions/setup-svu@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/setup-svu@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
 
       - name: Resolve the version to release
         id: version
-        uses: leinardi/gh-composite-actions/release-version@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/release-version@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           version: ${{ inputs.version }}
 
@@ -154,15 +154,15 @@ jobs:
 
     steps:
       - name: Require CI green on this commit
-        uses: leinardi/gh-composite-actions/require-ci-green@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/require-ci-green@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           accepted-events: push
 
   # The time-sensitive check: advisories are published every day, so the dependency graph CI passed
   # is checked again now (advisories, licences, bans and sources). It needs nothing and starts with
-  # guard, so it runs alongside guard and ci-green rather than after them; release-mode stops the
-  # release unless it passed. Pinning cargo-deny does not pin what it knows: the advisory database
-  # is fetched at run time.
+  # guard, so it runs alongside guard, ci-green and the release job's build rather than before them;
+  # the release job waits for it to pass before its first step that publishes anything. Pinning
+  # cargo-deny does not pin what it knows: the advisory database is fetched at run time.
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -178,7 +178,7 @@ jobs:
         run: rustup toolchain install --no-self-update
 
       - name: Set up cargo-deny
-        uses: leinardi/gh-composite-actions/setup-cargo-deny@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/setup-cargo-deny@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
 
       - name: Check the Rust dependencies with cargo-deny
         run: make rust-deny
@@ -187,7 +187,6 @@ jobs:
     needs:
       - guard
       - ci-green
-      - audit
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -203,6 +202,7 @@ jobs:
       packages: write # push the image to GHCR
       id-token: write # cosign keyless signing and provenance via GitHub OIDC
       attestations: write # provenance attestation upload
+      actions: read # require-job-success reads the audit job of this run
 
     steps:
       # No persisted credentials: the one step that writes to the repository, the tag push, passes
@@ -219,7 +219,7 @@ jobs:
       # dhi.io bases by an explicit tag, deliberately not by digest (dhi.io rebuilds them too often
       # to follow by digest), anything else by digest.
       - name: Check the Dockerfile pins
-        uses: leinardi/gh-composite-actions/check-pinned-bases@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/check-pinned-bases@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           dockerfiles: deployments/docker/Dockerfile
           tag-only-images: dhi.io
@@ -262,7 +262,7 @@ jobs:
       # switch to it, so a rebuilt binary is byte-identical to one the first attempt published. A
       # fresh release has no tag yet, and this is a no-op.
       - name: Recover the recorded toolchain
-        uses: leinardi/gh-composite-actions/toolchain-recover@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/toolchain-recover@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           toolchains: rust
           rust-targets: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
@@ -272,7 +272,7 @@ jobs:
       # that an existing tag records exactly this.
       - name: Record the toolchain
         id: toolchains
-        uses: leinardi/gh-composite-actions/toolchain-record@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/toolchain-record@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           toolchains: rust
 
@@ -280,7 +280,7 @@ jobs:
       # the Git tag, the image :<tag> on GHCR, the GitHub release and its assets. Only "not found"
       # counts as absent: any other lookup error stops the run. Every published artifact must be
       # attested by this workflow for this commit, and a published image signed by it too. It also
-      # installs cosign v3, which signs below, and stops unless the audit passed.
+      # installs cosign v3, which signs below.
       #
       #   Git tag         published                                     mode
       #   absent          nothing                                       fresh
@@ -295,7 +295,7 @@ jobs:
       # rebuilt. docs/release.md describes each mode.
       - name: Decide the release mode
         id: mode
-        uses: leinardi/gh-composite-actions/release-mode@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/release-mode@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           tag: ${{ needs.guard.outputs.tag }}
           image: ${{ env.IMAGE_REPO }}
@@ -303,7 +303,6 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           signer-workflow: ${{ env.SIGNER_WORKFLOW }}
           expected-toolchains: ${{ steps.toolchains.outputs.lines }}
-          required-results: ${{ needs.audit.result }}
           dry-run: ${{ inputs.dry_run }}
 
       # The published digest a reuse continues with, from the plan.
@@ -350,7 +349,7 @@ jobs:
       # The versions the Dockerfile's build stage pins (meta/tests/toolchain.rs), as CI.
       - name: Set up cargo-zigbuild
         if: steps.mode.outputs.rebuild != ''
-        uses: leinardi/gh-composite-actions/setup-zigbuild@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/setup-zigbuild@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           zig-version: 0.17.0
           cargo-zigbuild-version: 0.24.0
@@ -605,14 +604,14 @@ jobs:
       # pinned.
       - name: Scan the linux/amd64 image
         if: steps.mode.outputs.build == 'true'
-        uses: leinardi/gh-composite-actions/trivy-gate@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/trivy-gate@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           image: ${{ env.LOCAL_IMAGE }}@${{ steps.platform.outputs.amd64 }}
           platform: linux/amd64
 
       - name: Scan the linux/arm64 image
         if: steps.mode.outputs.build == 'true'
-        uses: leinardi/gh-composite-actions/trivy-gate@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/trivy-gate@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           image: ${{ env.LOCAL_IMAGE }}@${{ steps.platform.outputs.arm64 }}
           platform: linux/arm64
@@ -700,6 +699,15 @@ jobs:
             exit 1
           fi
           echo "Copied $DIGEST with its digest and $ATTESTATIONS attestation manifests intact."
+
+      # The audit runs alongside this job rather than before it, so the build does not wait for
+      # the advisories; nothing is published until it has passed in this run attempt (an earlier
+      # attempt's pass never counts, so a recovery uses "Re-run all jobs" - docs/release.md). A dry
+      # run waits for it too, so it reports the audit a real run would face.
+      - name: Require the audit to have passed
+        uses: leinardi/gh-composite-actions/require-job-success@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
+        with:
+          job: audit
 
       - name: Report what a real run would publish
         if: inputs.dry_run
@@ -825,7 +833,7 @@ jobs:
         id: reuse-scan-amd64
         if: ${{ !inputs.dry_run && steps.mode.outputs.mode == 'reuse' }}
         continue-on-error: true # findings in an image already published are warnings
-        uses: leinardi/gh-composite-actions/trivy-gate@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/trivy-gate@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           image: ${{ env.IMAGE_REPO }}@${{ steps.sign.outputs.digest }}
           platform: linux/amd64
@@ -834,7 +842,7 @@ jobs:
         id: reuse-scan-arm64
         if: ${{ !inputs.dry_run && steps.mode.outputs.mode == 'reuse' }}
         continue-on-error: true # findings in an image already published are warnings
-        uses: leinardi/gh-composite-actions/trivy-gate@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/trivy-gate@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           image: ${{ env.IMAGE_REPO }}@${{ steps.sign.outputs.digest }}
           platform: linux/arm64
@@ -874,7 +882,7 @@ jobs:
       # drafted. A dry run runs it too, as a rehearsal; only the attestation itself is skipped.
       - name: Check which binaries need an attestation
         id: binattest
-        uses: leinardi/gh-composite-actions/binary-attestation-status@502baa7b37123a2adaec289267af98383b8f3e6d # v1.3.0
+        uses: leinardi/gh-composite-actions/binary-attestation-status@2115c9766c690e2e98afdeb64425c761aa86b072 # v1.4.0
         with:
           files: |
             dist/${{ env.APP_NAME }}-linux-amd64
