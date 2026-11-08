@@ -18,8 +18,6 @@ workspace = true
 repo-meta.workspace = true
 testenv-core.workspace = true
 
-# The digest patterns of the image's download arms (regex) and the workspace manifests of the lint
-# opt-in's negative controls (toml).
+# The workspace manifests of the lint opt-in's negative controls (toml).
 [dev-dependencies]
-regex = "1.13.1"
 toml = "1.1.8"

@@ -9,15 +9,21 @@ assignees: []
 
 * [ ] I have checked that there are no duplicate active or recent issues (bugs, questions, or
   feature requests) describing this problem.
-* [ ] I am using the latest released version of this project (or have tested on the main/default
-  branch).
+* [ ] I am using the latest release (the binary, or `ghcr.io/leinardi/awtrix-controller:latest`),
+  or have tested a build of `main`.
+* [ ] This is not a security vulnerability (those go through the private process in SECURITY.md).
+* [ ] This is about awtrix-controller, not about the Awtrix3 firmware itself.
 
 ## Step 2: Describe your environment
 
-* Project version / commit SHA: `?`
-* Operating system and version: `?`
-* Version (`awtrix-controller --version`, or the image tag): `?`
-* Any relevant tooling or dependencies and versions: `?`
+<!-- The version: `awtrix-controller --version`, or for the image
+`docker run --rm ghcr.io/leinardi/awtrix-controller:<tag> --version` -->
+
+* awtrix-controller version (`awtrix-controller --version`): `?`
+* How it runs (release binary, image tag and digest, own build) and where (Docker Compose, Docker
+  Swarm, systemd, other): `?`
+* Host operating system and architecture: `?`
+* Awtrix3 firmware version and device: `?`
 
 ## Step 3: Describe the problem
 
@@ -41,10 +47,11 @@ assignees: []
 
 ### Relevant code, configuration, or data
 
-<!-- Paste the smallest possible code or config snippet that reproduces the issue. -->
+<!-- Paste the smallest configuration that reproduces the issue. Never paste a secret: replace
+the MQTT password with a placeholder. -->
 
-```text
-// Example snippet (replace with your own)
+```yaml
+# Example snippet (replace with your own)
 ```
 
 ### Error / log output

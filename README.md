@@ -46,8 +46,9 @@ dependencies: no libc, no zoneinfo (the time-zone database is compiled in) and n
 HTTPS roots for Open-Meteo are compiled in too).
 
 The image `ghcr.io/leinardi/awtrix-controller` is multi-arch (`linux/amd64`, `linux/arm64`): the
-static binary on the distroless `dhi.io/static` base, about 8 MB. Its
-entrypoint is the binary, so any arguments given to the container are flags. See
+static binary on the distroless `dhi.io/static` base, about 8 MB. Each platform's image binary is
+that platform's release binary, byte for byte. Its entrypoint is the binary, so any arguments given
+to the container are flags. See
 [docs/release.md](docs/release.md) for how a release is built, scanned, signed and attested.
 
 ## How to build
@@ -61,15 +62,16 @@ The version strings that `--version` prints come from the environment at build t
 and `unknown` when unset). `make rust-dist` and `make rust-run` set all three from git, the date
 from HEAD's commit.
 
-A static musl binary, as the releases ship it, needs [zig](https://ziglang.org/) and
-cargo-zigbuild, plus the target's standard library (`rustup target add x86_64-unknown-linux-musl`):
+The static musl binaries, as the releases ship them, need [zig](https://ziglang.org/) and
+cargo-zigbuild (`rust-toolchain.toml` adds both musl targets):
 
 ```bash
-cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
+make dist-static   # dist/awtrix-controller-linux-amd64 and -linux-arm64, as the release builds them
+make image-build-prebuilt image-test   # the image from those binaries, then its tests
 ```
 
-The container image builds both itself, so `make docker-build` needs only Docker (and a `dhi.io`
-login for the base images).
+`make docker-build` builds the image's default target instead, which compiles the binary itself, so
+it needs only Docker (and a `dhi.io` login for the base images).
 
 ## How to run
 
@@ -405,13 +407,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the prerequisites and the full list.
 - **CI** (`.github/workflows/ci.yaml`): on every pull request and every push to `main`, rustfmt,
   clippy, the tests and cargo-deny, every pre-commit hook on every file
   ([droast](https://github.com/immanuwell/dockerfile-roast), dclint, markdownlint, shellcheck,
-  yamllint, …), and on pull requests a Conventional Commits check of every commit; `ci-result` is
-  the one check that stands for all of them.
+  yamllint, …), the release's packaging path (the static binaries, and the image built from them
+  and tested on both platforms), and on pull requests a Conventional Commits check of every
+  commit; `ci-result` is the one check that stands for all of them.
 - **Release** (`.github/workflows/release.yaml`): dispatched by hand, with an optional version
-  derived from the commits when left empty. It builds static binaries for `linux/amd64` and
-  `linux/arm64` and a multi-arch image, scans the image with Trivy before tagging, then publishes
-  the image to GHCR with provenance and a cosign signature, and the GitHub release with checksums.
-  See [docs/release.md](docs/release.md).
+  derived from the commits when left empty. Once CI has passed on the commit, it builds static
+  binaries for `linux/amd64` and `linux/arm64` and a multi-arch image from them, smoke-tests and
+  scans the image with Trivy before tagging, then publishes the image to GHCR with provenance and a
+  cosign signature, and the GitHub release with the attested binaries and their checksums. See
+  [docs/release.md](docs/release.md).
 - **Scheduled scan** (`.github/workflows/scheduled-scan.yaml`): the latest image and the Rust
   dependencies, every week.
 
