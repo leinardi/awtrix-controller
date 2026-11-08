@@ -42,11 +42,14 @@ assignees: []
 ## 4. Environment (if relevant)
 
 <!-- Fill in what makes sense for your question, or remove fields that don't apply. -->
+<!-- The version: `awtrix-controller --version`, or for the image
+`docker run --rm ghcr.io/leinardi/awtrix-controller:<tag> --version` -->
 
-* Project version / commit SHA: `?`
-* Operating system and version: `?`
-* Version (`awtrix-controller --version`, or the image tag): `?`
-* Any relevant tooling / dependencies and versions: `?`
+* awtrix-controller version (`awtrix-controller --version`): `?`
+* How it runs (release binary, image tag and digest, own build) and where (Docker Compose, Docker
+  Swarm, systemd, other): `?`
+* Host operating system and architecture: `?`
+* Awtrix3 firmware version and device: `?`
 
 ---
 
