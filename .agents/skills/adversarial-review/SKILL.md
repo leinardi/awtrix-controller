@@ -320,7 +320,7 @@ confirmed finding:
 | any `**/*.rs` | `make verify` (build, rustfmt check, clippy with `-D warnings`, tests), then `make check` |
 | `Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify` and `make rust-deny` (cargo-deny; network required) |
 | `deployments/docker/Dockerfile`, `droast.toml` | droast via `make check`, `cargo test --locked -p meta --test dockerfiles --test toolchain`, plus `make docker-build` |
-| `scripts/image-test.sh`, `.mk/dist.mk`, `.mk/image.mk` | `make dist-static image-build-prebuilt image-test` (a `dhi.io` login) |
+| `scripts/image-test.sh`, `.mk/dist.mk`, `.mk/image.mk` | `make dist-static`, then `make image-build-test` (a `dhi.io` login) |
 | `meta/**`, `scripts/check-*.sh` | `cargo test --locked -p meta` |
 | `.github/workflows/release.yaml` | actionlint via `make check`; only a release dry run exercises it end to end, so say which steps you could not run |
 | anything else | `make check` (pre-commit on all files) |
