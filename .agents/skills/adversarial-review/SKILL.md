@@ -215,8 +215,10 @@ grace period, awaits a fetch, or kicks sessions one by one breaks the budget.
   smoke-tested and scanned by digest, copied with `skopeo copy --all --preserve-digests`, attested
   and signed before it is tagged `:<version>`. The release runs no test suite of its own: it gates on
   CI of the exact commit (`require-ci-green`), so a change that weakens CI's `image` or `rust` job
-  weakens the release. Trivy exceptions live only in `.trivyignore.yaml`, with a statement and an
-  `expired_at`.
+  weakens the release. The `audit` job runs alongside the build, and `require-job-success` waits for
+  it before the first step that publishes: a publishing step moved above that wait, or the wait made
+  conditional, is a finding. Trivy exceptions live only in `.trivyignore.yaml`, with a statement and
+  an `expired_at`.
 - Every workflow starts at `permissions: contents: read`; actions are pinned to a full commit
   SHA.
 - The commit type decides the release bump (`svu`): check that it matches whether the change

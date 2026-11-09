@@ -130,9 +130,10 @@ The run has four jobs:
    the release-time clippy and test suite, and the full image tests
    ([What CI proves](#what-ci-proves)).
 3. **`audit`**, alongside the two: `cargo deny check` (advisories, licences, bans and sources), the
-   one time-sensitive check of the code, since advisories are published every day. It needs nothing,
-   so it costs the release almost no time; the release job waits for it, and `release-mode` stops
-   the run unless it passed.
+   one time-sensitive check of the code, since advisories are published every day. It needs nothing
+   and nothing needs it, so it runs while the release job builds and costs the release almost no
+   time: the release job waits for it (`require-job-success`) only right before its first step that
+   publishes anything, and stops unless it passed.
 4. **`release`**, which checks the Dockerfile pins (`check-pinned-bases`, as CI does), sets up the
    pinned Rust (on a recovery, the one the tag records, through `toolchain-recover`), and then
    **decides the mode** (`release-mode`) from the Git tag on the remote, the image
@@ -284,9 +285,12 @@ quickest way to see what version the commits would produce.
 A recovery runs on the tagged commit, because that is the only commit the tag check accepts for an
 existing tag:
 
-- **"Re-run failed jobs" (or "Re-run all jobs") on the failed run.** This always works: a re-run
-  keeps the original run's commit and inputs, whatever has been merged since, and that commit's CI
-  already passed.
+- **"Re-run all jobs" on the failed run.** This always works: a re-run keeps the original run's
+  commit and inputs, whatever has been merged since, and that commit's CI already passed. Use "Re-run
+  all jobs", not "Re-run failed jobs", unless `audit` itself failed: the release job accepts only an
+  `audit` of its own attempt (`require-job-success` never trusts an earlier attempt's pass), and
+  "Re-run failed jobs" does not re-run an `audit` that passed, so the release would wait for it until
+  the step times out.
 - **A fresh dispatch with the same version, given explicitly**, while `main` still points at the
   tagged commit.
 
@@ -405,8 +409,9 @@ target never runs that build stage: it COPYs the binaries, so `dhi.io/rust` is n
 release at all.
 
 **Workflow tokens are read-only by default.** Each workflow sets `permissions: contents: read` at
-the top; only the release job adds `contents: write`, `packages: write`, `id-token: write` and
-`attestations: write`, in the `release` environment, `ci-green` adds `actions: read`, and the
+the top; only the release job adds `contents: write`, `packages: write`, `id-token: write`,
+`attestations: write` and `actions: read` (to read the `audit` job), in the `release` environment,
+`ci-green` adds `actions: read`, and the
 reviewdog jobs in `ci.yaml` add `pull-requests: write` to post their review.
 
 **Caches.** The release's Rust build cache is its own (`prefix-key: release`), restored and saved

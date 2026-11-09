@@ -89,8 +89,9 @@ fn read(edit: Edit, file: &str) -> String {
 }
 
 /// Every pin the repository writes in more than one file, each one value: the Rust line
-/// (rust-toolchain.toml, Cargo's `rust-version`, the image's tag), the image's exact Rust release
-/// (its tag and `ARG RUST_VERSION`, the release the musl standard libraries are downloaded for),
+/// (rust-toolchain.toml, Cargo's `rust-version`, the image's tag), the exact Rust release
+/// (rust-toolchain.toml's channel, the image's tag and `ARG RUST_VERSION`, the release the musl
+/// standard libraries are downloaded for),
 /// zig, cargo-zigbuild and `ShellCheck`. `edit` is applied to the content of each file read.
 fn pin_problems(edit: Edit) -> Vec<Problem> {
     let dockerfile = read(edit, DOCKERFILE);
@@ -104,8 +105,9 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
         &[],
     );
     problems.extend(one_value(
-        "the image's Rust release",
+        "the Rust release",
         &[
+            PinSource::rust_channel(RUST_TOOLCHAIN, &read(edit, RUST_TOOLCHAIN)),
             PinSource::rust_image_tag(DOCKERFILE, &dockerfile),
             PinSource::rust_version_arg(DOCKERFILE, &dockerfile),
         ],
@@ -141,9 +143,9 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
 }
 
 /// The pins hold: rust-toolchain.toml pins an exact release and the MSRV in Cargo.toml and the
-/// image's tag are its line; the image's tag and `ARG RUST_VERSION` are one release; CI's and the
-/// release's binaries and the image's build stage are built with the same zig and cargo-zigbuild;
-/// and the `ShellCheck` CI installs is the release the shellcheck-py hook wraps.
+/// image's tag are its line; that release, the image's tag and `ARG RUST_VERSION` are one release;
+/// CI's and the release's binaries and the image's build stage are built with the same zig and
+/// cargo-zigbuild; and the `ShellCheck` CI installs is the release the shellcheck-py hook wraps.
 #[test]
 fn pins_are_one_value() {
     let problems = pin_problems(&|_, content| content);
@@ -190,6 +192,13 @@ fn rust_pin_rules_refuse_each_edit() {
             RUST_TOOLCHAIN,
             channel.clone(),
             format!("channel = \"{other_line}.1\""),
+            2,
+        ),
+        (
+            "a toolchain of another patch",
+            RUST_TOOLCHAIN,
+            channel.clone(),
+            format!("channel = \"{line}.99\""),
             1,
         ),
         (
@@ -197,7 +206,7 @@ fn rust_pin_rules_refuse_each_edit() {
             RUST_TOOLCHAIN,
             channel,
             "channel = \"stable\"".to_owned(),
-            1,
+            2,
         ),
         (
             "an MSRV of another line",
