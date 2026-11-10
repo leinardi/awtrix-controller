@@ -8,12 +8,20 @@ allow-expect-in-tests = true
 allowed-idents-below-min-chars = ["x", "y"]
 
 # Scheduling and window code reads the time from the injected clock, so the tests can drive it.
-# Only clock's SystemClock (re-exported by src/clock, outside this lint's reach) and the debug
-# weather simulation, through an #[expect(clippy::disallowed_methods, reason = "...")], read the
-# wall clock.
+# Only clock's SystemClock and the debug weather simulation read the wall clock. SystemClock is
+# not re-exported by src/clock and is banned below by its path in the clock crate (the original
+# path: clippy resolves a re-export to it), so the one place that builds it, the production wiring
+# in src/run, carries an #[expect(clippy::disallowed_types, reason = "...")] on its `use`. The
+# simulation carries an #[expect(clippy::disallowed_methods, reason = "...")]. The type lint fires
+# on a `use` and on a type position; a unit-struct value written by its full path
+# (`::clock::SystemClock` as an expression) escapes it, which review catches.
 disallowed-methods = [
     { path = "jiff::Timestamp::now", reason = "read the time from the injected Clock" },
     { path = "jiff::Zoned::now", reason = "read the time from the injected Clock" },
     { path = "std::time::SystemTime::now", reason = "read the time from the injected Clock" },
     { path = "std::time::Instant::now", reason = "read the time from the injected Clock" },
+]
+
+disallowed-types = [
+    { path = "clock::SystemClock", reason = "read the time from the injected Clock; only the run wiring builds the system clock" },
 ]

@@ -153,7 +153,7 @@ This repository's intentional differences from the other Rust services:
   service-kit's future would never resolve.
 - **The local-time conversions stay local** (`clock::resolve_local`, `clock::next_local_midnight`):
   they are this controller's daylight-saving policy on jiff's zones, not part of the injected
-  clock; only `Clock`, `SystemClock`, `TokioClock` and the tests' `FakeClock` come from
+  clock; only `Clock`, `TokioClock` and the tests' `FakeClock` come from
   `clock`.
 
 ## Validation matrix
@@ -204,11 +204,12 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 ## Conventions worth knowing
 
 - **Clock discipline:** `clippy.toml`'s `disallowed-methods` bans `jiff::Timestamp::now`,
-  `jiff::Zoned::now`, `std::time::SystemTime::now` and `std::time::Instant::now`. Scheduling and
-  window code reads the time from the injected `src/clock` clock (rust-common's `clock`,
-  re-exported), so the tests can drive it; only `clock`'s `SystemClock` and the debug weather
-  simulation read the wall clock, the latter through an
-  `#[expect(clippy::disallowed_methods, reason = "...")]`.
+  `jiff::Zoned::now`, `std::time::SystemTime::now` and `std::time::Instant::now`, and its
+  `disallowed-types` bans `clock::SystemClock`. Scheduling and window code reads the time from the
+  injected `src/clock` clock (rust-common's `clock`, re-exported without `SystemClock`), so the
+  tests can drive it, through `run::Options::clock`; only the production wiring in `src/run`
+  (`#[expect(clippy::disallowed_types, reason = "...")]` on its `use`) and the debug weather
+  simulation (`#[expect(clippy::disallowed_methods, reason = "...")]`) read the wall clock.
 - **Daylight saving:** every "local date and wall time to instant" conversion goes through
   `clock::resolve_local` (a gap moves forward by its length, a fold takes the earlier instant). No
   other module calls jiff's disambiguation directly.

@@ -34,6 +34,11 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[expect(
+    clippy::disallowed_types,
+    reason = "the production wiring: the one place that builds the wall clock every other module is handed"
+)]
+use ::clock::SystemClock;
 use clap::Parser;
 use jiff::tz::TimeZone;
 use tokio::sync::mpsc;
@@ -47,7 +52,7 @@ use crate::broker::{
 };
 use crate::cli::{Cli, single_dash_long_form};
 use crate::clientstate::Registry;
-use crate::clock::{Clock, SystemClock};
+use crate::clock::Clock;
 use crate::config::{self, Config, DEFAULT_CONFIG_PATH, LogFormat};
 use crate::daynight::{DayNight, OnModeChange};
 use crate::energysaving::{EnergySaving, OnActiveChange};
@@ -79,6 +84,8 @@ pub struct Options {
     pub fetch: Option<FetchFunction>,
     /// Replaces the device registry, allowing state-failure tests without a real device.
     pub registry: Option<Arc<Registry>>,
+    /// Replaces the wall clock, so a test drives the time; `None` builds the system clock.
+    pub clock: Option<Arc<dyn Clock>>,
 }
 
 /// How a run ended (service-kit's `Exit`, which `run_until_exit` takes): `code` is the process
@@ -212,7 +219,7 @@ async fn start(
     let components = CancellationToken::new();
     let _cancel_components = components.clone().drop_guard();
 
-    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let clock: Arc<dyn Clock> = options.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let registry = options
         .registry
         .unwrap_or_else(|| Arc::new(Registry::new()));
@@ -681,11 +688,13 @@ mod tests {
         config.mqtt.port = 0;
         let registry = Arc::new(Registry::new());
         crate::clientstate::poison(&registry);
+        let clock = Arc::new(crate::clock::FakeClock::new(jiff::Timestamp::UNIX_EPOCH));
+        let fetch_clock = Arc::clone(&clock);
         let (started, mut requests) = mpsc::unbounded_channel();
         let fetch: FetchFunction = Arc::new(move |_, _, _, _| {
             let _ = started.send(Instant::now());
             Box::pin(future::ready(Ok(vec![weather::ForecastPoint {
-                time: SystemClock.now() + jiff::SignedDuration::from_mins(15),
+                time: fetch_clock.now() + jiff::SignedDuration::from_mins(15),
                 weather_code: Some(95),
                 precipitation: None,
                 snowfall: None,
@@ -698,6 +707,7 @@ mod tests {
         let options = Options {
             fetch: Some(fetch),
             registry: Some(registry),
+            clock: Some(clock),
         };
         let exit = tokio::time::timeout(
             Duration::from_secs(5),

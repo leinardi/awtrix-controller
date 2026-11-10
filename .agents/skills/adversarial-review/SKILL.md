@@ -145,9 +145,10 @@ every connected
   forward by its length, a fold takes the earlier instant); another conversion is a finding.
   Monthly days past the month's end clamp to its last day, `02-29` to February 28 outside leap
   years. Fire times are strictly after `from`.
-- No wall clock outside `clock`'s `SystemClock` (re-exported by `src/clock`) and the debug
-  weather simulation (`clippy.toml` `disallowed-methods`); a new
-  `#[expect(clippy::disallowed_methods)]` elsewhere is a finding.
+- No wall clock outside the production wiring in `src/run` (the one `clock::SystemClock`, banned
+  by `clippy.toml` `disallowed-types`) and the debug weather simulation (`disallowed-methods`); a
+  new `#[expect(clippy::disallowed_types)]` or `#[expect(clippy::disallowed_methods)]` elsewhere,
+  or `::clock::SystemClock` written as an expression, is a finding.
 - With no `timezone`, day/night, energy saving and scheduled notifications use the system zone
   but the weather controller uses `UTC`, as Go did.
 - Polar night or midnight sun (the sun function returns `None`) means Night and a retry at the
