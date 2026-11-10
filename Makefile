@@ -52,9 +52,9 @@ BIN_NAME     ?= awtrix-controller
 
 # Rust settings for make-common's rust.mk. src/version.rs reads the AWTRIX_CONTROLLER_VERSION,
 # _COMMIT and _DATE stamps. The default features are all of them: no member defines a [features]
-# table. cargo-deny keeps the root package's graph (no --workspace), as before the move upstream.
+# table. cargo-deny checks the whole workspace (rust.mk's default RUST_DENY_ARGS, --workspace), the
+# meta crate's graph included.
 RUST_STAMP_PREFIX := AWTRIX_CONTROLLER
-RUST_DENY_ARGS    :=
 
 # The date stamp is HEAD's commit date in UTC (rust.mk's GIT_COMMIT_DATE, the clock's only
 # outside git), the date release.yaml stamps. A stamp that moves only with a commit keeps a

@@ -43,7 +43,7 @@ cargo test --locked -p awtrix-controller --test broker
 ```
 
 The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run,
-`rust.mk` among them, configured by the Makefile's `RUST_STAMP_PREFIX` and `RUST_DENY_ARGS`. To
+`rust.mk` among them, configured by the Makefile's `RUST_STAMP_PREFIX`. To
 refresh: `make mk-common-update`. Project targets live in the local `.mk/*.mk` files listed in
 `MK_LOCAL_FILES` (`verify.mk`, `audit-deps.mk`, `docker-run.mk`, `dist.mk`, `image.mk`), never as
 recipes in the Makefile.
@@ -133,9 +133,9 @@ its own features.
   whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2, getrandom).
   `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock`
   changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with the URL. `make
-  rust-deny` checks the root package's graph only (`RUST_DENY_ARGS` is empty), so `clock`,
-  `service-kit` and `tracing-setup` are gated by cargo-deny and the meta crate's graph (`repo-meta`,
-  `testenv-core` and their dependencies) is not.
+  rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so the graphs of
+  the root package and of the meta crate (`repo-meta`, `testenv-core` and their dependencies) are
+  both gated.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
