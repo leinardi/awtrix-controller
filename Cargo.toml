@@ -20,11 +20,11 @@ repository = "https://github.com/leinardi/awtrix-controller"
 # `path = "../rust-common/crates/<name>"`, never in a release or image build (the image's build
 # context does not hold them).
 [workspace.dependencies]
-clock = { git = "https://github.com/leinardi/rust-common", tag = "v1.0.0", version = "1.0" }
-repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v1.0.0", version = "1.0" }
-service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v1.0.0", version = "1.0" }
-testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v1.0.0", version = "1.0" }
-tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v1.0.0", version = "1.0" }
+clock = { git = "https://github.com/leinardi/rust-common", tag = "v1.1.0", version = "1.1" }
+repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v1.1.0", version = "1.1" }
+service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v1.1.0", version = "1.1" }
+testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v1.1.0", version = "1.1" }
+tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v1.1.0", version = "1.1" }
 
 # The lint set lives here once. Every member opts in with `[lints] workspace = true` (a member does
 # not inherit it otherwise, and the meta crate asserts that each one does), and every clippy run is

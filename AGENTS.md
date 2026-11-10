@@ -83,7 +83,8 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
   version everywhere, the zig, cargo-zigbuild and ShellCheck pins, Trivy never pinned, no vacuous
   flags), `dockerfiles.rs` (the image's frontend, its five stages and their tag-pinned bases),
-  and `workspace_lints.rs` (every member opts into the workspace lints). Most run rust-common's
+  `workspace_lints.rs` (every member opts into the workspace lints) and `rust_common_pins.rs` (the
+  rust-common pins: one `vX.Y.Z` tag, each `version` its `<major>.<minor>`). Most run rust-common's
   `repo-meta` checks with this repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test.
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, deliberately not by digest:
@@ -118,24 +119,24 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v1.0.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "1.0"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+tag (`tag = "v1.1.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
+`version = "1.1"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
   its code into this repository. A fix to shared code lands in rust-common first, then reaches here
   by moving the `tag`.
-- **Moving the `tag`** needs the network: change it on all five lines (nothing checks that they
-  agree; a partial move locks two tags side by side), and `version` with it when the tag's
-  `<major>.<minor>` moves (a `v1.0.0` checkout does not resolve against `version = "0.3"`), then run
-  `cargo fetch` before the `--locked` make targets, which otherwise refuse the stale lock. The
-  manifest change is what makes cargo re-resolve the git source; `cargo fetch` changes nothing else,
-  whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2, getrandom).
-  `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and `Cargo.lock`
-  changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with the URL. `make
-  rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so the graphs of
-  the root package and of the meta crate (`repo-meta`, `testenv-core` and their dependencies) are
-  both gated.
+- **Moving the `tag`** needs the network: change it on all five lines (a partial move locks two tags
+  side by side, and the `rust_common_pins` meta-test refuses it), and `version` with it when the
+  tag's `<major>.<minor>` moves (a `v1.1.0` checkout does not resolve against `version = "1.0"`),
+  then run `cargo fetch` before the `--locked` make targets, which otherwise refuse the stale lock.
+  The manifest change is what makes cargo re-resolve the git source; `cargo fetch` changes nothing
+  else, whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2,
+  getrandom). `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and
+  `Cargo.lock` changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with
+  the URL. `make rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so
+  the graphs of the root package and of the meta crate (`repo-meta`, `testenv-core` and their
+  dependencies) are both gated.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
