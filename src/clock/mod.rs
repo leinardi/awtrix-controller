@@ -26,10 +26,11 @@
 //! reading the wall clock, and the one conversion from a local date and wall-clock time to an
 //! instant.
 //!
-//! The clock itself ([`Clock`], [`SystemClock`], [`TokioClock`] and the tests' `FakeClock`) is
-//! rust-common's `clock`, re-exported here so the call sites name `crate::clock`. Only
-//! `clock`'s `SystemClock` and the debug weather simulation read the wall clock (`clippy.toml`
-//! bans `Timestamp::now` and its kin in this crate).
+//! The clock itself ([`Clock`], [`TokioClock`] and the tests' `FakeClock`) is rust-common's
+//! `clock`, re-exported here so the call sites name `crate::clock`. `clock::SystemClock` is
+//! deliberately not re-exported: only the production wiring in `run` builds it, and the debug
+//! weather simulation reads the wall clock directly (`clippy.toml` bans `Timestamp::now` and its
+//! kin, and `clock::SystemClock` itself, in this crate).
 
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
@@ -37,7 +38,7 @@ use jiff::{Timestamp, ToSpan};
 
 #[cfg(test)]
 pub(crate) use clock::FakeClock;
-pub use clock::{Clock, SystemClock, TokioClock};
+pub use clock::{Clock, TokioClock};
 
 /// Converts a local date and wall-clock time in `zone` to an instant. Every such conversion goes
 /// through here, so the daylight-saving policy is decided once:

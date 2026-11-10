@@ -9,9 +9,9 @@ repeatedly bite:
   not covered (`tests/run.rs` carries a crate-level `#![expect]`); poisoned mutex:
   `.lock().unwrap_or_else(PoisonError::into_inner)`.
 - `print_stdout`/`print_stderr` denied: log via `tracing`, `writeln!` for `--version`.
-- `disallowed_methods`: no `Timestamp::now`/`Zoned::now`/`SystemTime::now`/`Instant::now` outside
-  clock's `SystemClock` (re-exported by `src/clock`) and the weather simulation; use the
-  injected `Clock`.
+- `disallowed_methods`/`disallowed_types`: no `Timestamp::now`/`Zoned::now`/`SystemTime::now`/
+  `Instant::now`, and no `clock::SystemClock`, outside the production wiring in `src/run` and the
+  weather simulation; use the injected `Clock` (`run::Options::clock` in tests).
 - pedantic: `#[must_use]` on pure fns, `# Errors` docs, identifiers in backticks in docs.
 - Public items before private ones within an `impl` (review rule, not linted).
 

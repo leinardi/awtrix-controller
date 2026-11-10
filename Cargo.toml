@@ -48,8 +48,9 @@ print_stderr = "deny"
 wildcard_enum_match_arm = "deny"
 # Descriptive names; the allow-list is in clippy.toml.
 min_ident_chars = "deny"
-# The wall-clock ban in clippy.toml is only enforced if the lint is.
+# The wall-clock bans in clippy.toml are only enforced if the lints are.
 disallowed_methods = "deny"
+disallowed_types = "deny"
 
 [package]
 name = "awtrix-controller"
@@ -70,8 +71,8 @@ async-trait = "0.1.92"
 chrono = { version = "0.4.45", default-features = false }
 clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 futures = "0.3.34"
-# The injected wall clock (Clock, SystemClock, TokioClock, the tests' FakeClock), re-exported by
-# src/clock (rust-common).
+# The injected wall clock (Clock, TokioClock, the tests' FakeClock; SystemClock is built only by
+# the run wiring), re-exported by src/clock (rust-common).
 clock.workspace = true
 jiff = { version = "0.2.38", features = ["tzdb-bundle-always", "serde"] }
 rmqtt = { version = "0.24.0", default-features = false, features = ["ws", "plugin", "retain"] }
