@@ -12,9 +12,10 @@ way.
 
 - Two static binaries, `awtrix-controller-linux-amd64` and `awtrix-controller-linux-arm64`,
   cross-compiled for the `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets by
-  `make dist-static` (`cargo zigbuild --release --locked`), with the build paths remapped and the
-  version, commit and commit date compiled in, plus `checksums.txt` over both. All three are
-  attached to the GitHub release, and each binary has a
+  `make rust-release-binaries` (`cargo zigbuild --release --locked`), with the build paths
+  remapped and the version, commit and commit date compiled in, plus `checksums.txt` over both
+  (`make rust-release-checksums`). All three are attached to the GitHub release, and each binary
+  has a
   [build provenance attestation](https://docs.github.com/actions/security-guides/using-artifact-attestations)
   from the release workflow.
 - A multi-arch (`linux/amd64`, `linux/arm64`) image at
@@ -174,9 +175,9 @@ The run has four jobs:
 
 A **fresh** release then runs:
 
-1. **Build the binaries once**, with `make dist-static`, the make target CI builds them with. The
-   Rust build cache is the release's own (`prefix-key: release`), written only by this workflow.
-   `checksums.txt` is written over both.
+1. **Build the binaries once**, with `make rust-release-binaries`, the make target CI builds them
+   with. The Rust build cache is the release's own (`prefix-key: release`), written only by this
+   workflow. `checksums.txt` is written over both (`make rust-release-checksums`).
 2. Start a registry inside the job (`registry:3.1.2`, pinned by digest).
 3. **Build the image once**, the Dockerfile's `prebuilt` target, for both platforms, with those
    binaries as the `dist` build context, so the image binary is the release asset. It is pushed by
@@ -212,11 +213,12 @@ Everything stamped into an artifact comes from the commit rather than from the c
 fixed seven-character commit prefix, the commit date as the build date (and the image's `created`
 label), and the commit time as BuildKit's `SOURCE_DATE_EPOCH`. The binaries are built with the
 pinned Rust toolchain, zig and cargo-zigbuild, `Cargo.lock` (`--locked`), and `--remap-path-prefix`
-for the checkout and the cargo home, so a re-run of the same commit produces the same bytes, which
-is what lets a recovery check published assets by sha256. The image is not byte-reproducible: its
-provenance records the build itself, so two builds of the same commit have different index digests.
-That is why a recovery never compares a rebuilt index with a published one, and never rebuilds a
-published one.
+for the checkout, the cargo home and the toolchain's `rust-src` (mapped back to the
+`/rustc/<commit>` the standard library was built with, so a host with `rust-src` and CI's minimal
+profile build the same bytes), so a re-run of the same commit produces the same bytes, which is what
+lets a recovery check published assets by sha256. The image is not byte-reproducible: its provenance
+records the build itself, so two builds of the same commit have different index digests. That is why
+a recovery never compares a rebuilt index with a published one, and never rebuilds a published one.
 
 ## What CI proves
 
@@ -231,8 +233,8 @@ being released:
   tests, the docs and cargo-deny) and `pre-commit-all` (every hook on every file).
 - **The packaging was tested on that commit.** `ci-result` needs the `image` job, which runs on
   every pull request and every push, with no path filter. It builds the static binaries with
-  `make dist-static`, the release's own make target, then the `prebuilt` image target from them
-  for both platforms:
+  `make rust-release-binaries`, the release's own make target, then the `prebuilt` image target
+  from them for both platforms:
   - **linux/amd64, the full suite** (`scripts/image-test.sh --tier full`): the image is the
     platform's; its binary is the `dist/` binary just built, byte for byte; `--version` prints the
     stamps; the binary is a static x86-64 ELF, `0755 root:root`; the image runs as the base's
@@ -243,6 +245,9 @@ being released:
     configuration file.
   - **linux/arm64, the reduced suite** under QEMU (`--tier reduced`): the same up to the image
     config, and the container starting and its broker accepting the credentials.
+
+  make-common's image targets run the full tier only on the host's platform; a foreign platform,
+  under QEMU, takes `IMAGE_TEST_TIER=reduced`.
 - **The same build.** CI and the release build the binaries with the same make target, toolchain,
   zig and cargo-zigbuild (one value each, `meta/tests/toolchain.rs`), and the image from the same
   Dockerfile target and build context shape. The build arguments differ only in the stamps.
@@ -417,12 +422,14 @@ each in one literal `FROM <image>:<tag>` with an explicit tag other than `latest
 (`meta/tests/dockerfiles.rs`, `check-pinned-bases`). Each release records the base digest it
 shipped (see [What CI proves](#what-ci-proves)). Dependabot's `docker` ecosystem moves the
 `dhi.io/static` tag; the `dhi.io/rust` tag is bumped by hand with `RUST_VERSION`, the `rust-std`
-digests and `rust-toolchain.toml` (the `toolchain` meta-test fails when the Rust line, the image
-patch or the copies of a zig pin disagree).
+digests, the Makefile's `RUST_RELEASE_RUST_STD_*` pins and `rust-toolchain.toml` (the `toolchain`
+meta-test fails when the Rust line, the image patch, the Makefile's pins or the copies of a zig pin
+disagree).
 
-**The binaries are built outside Docker, once.** The release's `dist-static` gets zig and
-cargo-zigbuild from gh-composite-actions' `setup-zigbuild`, at the versions the Dockerfile's build
-stage pins (`ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`), and Rust from `rust-toolchain.toml`
+**The binaries are built outside Docker, once.** The release's `rust-release-binaries` gets zig and
+cargo-zigbuild from gh-composite-actions' `setup-zigbuild`, at the versions the Makefile pins
+(`RUST_RELEASE_ZIG_VERSION`, `RUST_RELEASE_CARGO_ZIGBUILD_VERSION`) and the Dockerfile's build
+stage copies (`ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`), and Rust from `rust-toolchain.toml`
 (`rustup toolchain install`), or, on a recovery, the release the tag records. The image's `prebuilt`
 target never runs that build stage: it COPYs the binaries, so `dhi.io/rust` is not part of a
 release at all.

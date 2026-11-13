@@ -24,7 +24,8 @@ make rust-deny     # cargo deny check: advisories, licences, bans, sources (netw
 make audit-deps    # cargo deny check advisories (network required); cargo-deny also runs in CI and as a pre-commit hook on Cargo.toml/Cargo.lock/deny.toml changes
 make check         # pre-commit on all files: rustfmt, clippy, tests, linters
 make check-stage   # pre-commit on the staging area only
-make dist-static   # the static release binaries, dist/awtrix-controller-linux-{amd64,arm64} (zig, cargo-zigbuild)
+make rust-release-binaries  # the static release binaries, dist/awtrix-controller-linux-{amd64,arm64} (zig, cargo-zigbuild)
+make rust-release-checksums # dist/checksums.txt over both shipped platforms' binaries
 make image-build-prebuilt   # the image's prebuilt target from dist/, for IMAGE_PLATFORM (default: the host's)
 make image-test    # scripts/image-test.sh on that image, IMAGE_TEST_TIER full (default), reduced or smoke
 make image-build-test       # image-build-prebuilt, then image-test (ordered, safe under make -j)
@@ -43,10 +44,10 @@ cargo test --locked -p awtrix-controller --test broker
 ```
 
 The Makefile pulls shared snippets from `leinardi/make-common@v1` into `.mk/` on first run,
-`rust.mk` among them, configured by the Makefile's `RUST_STAMP_PREFIX`. To
-refresh: `make mk-common-update`. Project targets live in the local `.mk/*.mk` files listed in
-`MK_LOCAL_FILES` (`verify.mk`, `audit-deps.mk`, `docker-run.mk`, `dist.mk`, `image.mk`), never as
-recipes in the Makefile.
+`rust.mk`, `rust-release.mk` and `image.mk` among them, configured by the Makefile's
+`RUST_STAMP_PREFIX` and `RUST_RELEASE_*` settings. To refresh: `make mk-common-update`. Project
+targets live in the local `.mk/*.mk` files listed in `MK_LOCAL_FILES` (`verify.mk`,
+`audit-deps.mk`, `docker-run.mk`), never as recipes in the Makefile.
 
 ## Layout
 
@@ -81,11 +82,12 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 - `tests/` — integration tests: `broker.rs` (MQTT clients over real sockets) and `run.rs` (the
   whole run, shutdown and exit codes, and the built binary).
 - `meta/` — the repository meta-tests, `publish = false`: `meta/tests/toolchain.rs` (one Rust
-  version everywhere, the zig, cargo-zigbuild and ShellCheck pins, Trivy never pinned, no vacuous
-  flags), `dockerfiles.rs` (the image's frontend, its five stages and their tag-pinned bases),
-  `workspace_lints.rs` (every member opts into the workspace lints) and `rust_common_pins.rs` (the
-  rust-common pins: one `vX.Y.Z` tag, each `version` its `<major>.<minor>`). Most run rust-common's
-  `repo-meta` checks with this repository's parameters, beside the rules that are its own.
+  version everywhere, the zig, cargo-zigbuild and ShellCheck pins, the Makefile's `RUST_RELEASE_*`
+  pins and digests, Trivy never pinned, no vacuous flags), `dockerfiles.rs` (the image's frontend,
+  its five stages and their tag-pinned bases), `workspace_lints.rs` (every member opts into the
+  workspace lints) and `rust_common_pins.rs` (the rust-common pins: one `vX.Y.Z` tag, each
+  `version` its `<major>.<minor>`). Most run rust-common's `repo-meta` checks with this
+  repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test.
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, deliberately not by digest:
   dhi.io rebuilds its tags too often; the `# syntax` frontend by digest; two targets on one `base`
@@ -107,8 +109,9 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
 
 ### Generated or vendored: never hand-edit
 
-- `.mk/{docker,help,password,pre-commit,rust}.mk` and `scripts/bootstrap-mk-common.sh`: fetched from
-  make-common; refresh them with `make mk-common-update`, and port a change upstream.
+- `.mk/{docker,help,password,pre-commit,rust,rust-release,image}.mk` and
+  `scripts/bootstrap-mk-common.sh`: fetched from make-common; refresh them with
+  `make mk-common-update`, and port a change upstream.
 - `Cargo.lock`: written by cargo; change it with `cargo update -p <crate>`, never by hand.
 
 ### Shared crates (rust-common)
@@ -167,8 +170,8 @@ Run before considering an edit done. `make check` applies to every row.
 | the rust-common `tag` in the root `Cargo.toml` | `cargo fetch` (only rust-common lines change in `Cargo.lock`), then `make verify`, `make rust-deny` and `cargo test --locked -p meta`, with the network ([Shared crates](#shared-crates-rust-common)); the `[patch]` table and a patched `Cargo.lock` are never committed |
 | `Cargo.toml`, `meta/Cargo.toml`, `Cargo.lock`, `deny.toml` | `make verify`, `make rust-deny` (network; the commit hook runs it too), `cargo test --locked -p meta --test toolchain --test workspace_lints` |
 | `rust-toolchain.toml`, `clippy.toml`, `rustfmt.toml` | `make verify`, `cargo test --locked -p meta --test toolchain` |
-| `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check`); gh-composite-actions' `check-pinned-bases/check-pinned-bases.sh --tag-only dhi.io deployments/docker/Dockerfile`; `make dist-static`, then `make image-build-test`, and with QEMU `make image-build-test IMAGE_PLATFORM=linux/arm64 IMAGE_TEST_TIER=reduced`; `make docker-build` (all need a `dhi.io` login) |
-| `scripts/image-test.sh`, `.mk/dist.mk`, `.mk/image.mk` | `make dist-static`, then `make image-build-test` (and the arm64 run above); keep `docs/release.md#what-ci-proves` true |
+| `deployments/docker/Dockerfile`, `droast.toml`, `.dockerignore` | `cargo test --locked -p meta --test dockerfiles --test toolchain` (droast runs in `make check`); gh-composite-actions' `check-pinned-bases/check-pinned-bases.sh --tag-only dhi.io deployments/docker/Dockerfile`; `make rust-release-binaries`, then `make image-build-test`, and with QEMU `make image-build-test IMAGE_PLATFORM=linux/arm64 IMAGE_TEST_TIER=reduced`; `make docker-build` (all need a `dhi.io` login) |
+| `scripts/image-test.sh`, the Makefile's `RUST_RELEASE_*` settings | `make rust-release-binaries`, then `make image-build-test` (and the arm64 run above); keep `docs/release.md#what-ci-proves` true |
 | `.trivyignore.yaml` | every entry scoped to paths or purls, with a statement and an `expired_at`; scan the prebuilt image with the latest Trivy as `trivy-gate` runs it (`--ignore-unfixed --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml`) |
 | `scripts/check-license-headers.sh` | `pre-commit run check-license-headers --all-files` |
 | `scripts/hooks/rustfmt-on-edit.sh` | shellcheck (in `make check`); run it once by editing a `.rs` file in Claude Code |
@@ -220,9 +223,9 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   empty). `make rust-dist` and `make rust-run` set them from git, the date from HEAD's commit
   (`RUST_STAMP_PREFIX` and `BUILD_DATE` in the Makefile, for make-common's `.mk/rust.mk`;
   `make rust-build` builds unstamped, as the tests do, through `RUST_BUILD_ENV :=`);
-  `make dist-static` from `DIST_VERSION`, `DIST_COMMIT` and `DIST_DATE`, which the release sets to
-  the tag, the commit's first seven characters and its commit date; and the Dockerfile's build stage
-  from its `VERSION`, `COMMIT` and `DATE` arguments, which also fill the image labels.
+  `make rust-release-binaries` from `GIT_VERSION`, `GIT_COMMIT` and `BUILD_DATE`, which the release
+  sets to the tag, the commit's first seven characters and its commit date; and the Dockerfile's
+  build stage from its `VERSION`, `COMMIT` and `DATE` arguments, which also fill the image labels.
 - Every Rust and shell file, the Dockerfile, the Makefile and the repo-local `.mk` fragments carry
   the MIT license header, with the year of the file's first commit (copy it from any Rust or shell
   file, or use the IntelliJ MIT copyright profile). The `check-license-headers` pre-commit hook

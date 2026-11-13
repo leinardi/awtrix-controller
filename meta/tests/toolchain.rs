@@ -27,12 +27,21 @@
 //! and no flag makes a gate pass on nothing. The checks are `repo_meta::toolchain::one_value` over
 //! this repository's pin sources and `repo_meta::vacuous`'s; the negative controls run them on
 //! altered copies of the real files and on samples.
+//!
+//! The Makefile is the one record of the zig, cargo-zigbuild and `rust-std` pins, the settings
+//! make-common's `rust-release.mk` builds the release binaries with: the Dockerfile's build stage
+//! carries copies of the versions and of the zig and `rust-std` digests, CI and the release pass
+//! the zig and cargo-zigbuild versions to gh-composite-actions' setup-zigbuild, and every copy is
+//! checked against the Makefile. Each pin is a `:=` there, so an environment variable cannot
+//! change it.
 
-use repo_meta::toolchain::{PinSource, one_value, rust_release};
+use repo_meta::toolchain::{PinSource, one_value, rust_release, toolchain_targets};
 use repo_meta::vacuous::{AllowedFragment, VacuousFlags};
 use repo_meta::{Problem, report};
 
 const DOCKERFILE: &str = "deployments/docker/Dockerfile";
+/// The record of the release pins, for make-common's `rust-release.mk`.
+const RELEASE_PINS: &str = "Makefile";
 const RUST_TOOLCHAIN: &str = "rust-toolchain.toml";
 const PRE_COMMIT: &str = ".pre-commit-config.yaml";
 const CI_WORKFLOW: &str = ".github/workflows/ci.yaml";
@@ -55,6 +64,25 @@ const SHELLCHECK_ACTION: &str =
 /// A Trivy version written down anywhere under .github: trivy-gate's `trivy-version` input, a
 /// `TRIVY_VERSION`, or a setup-trivy step of its own.
 const TRIVY_PIN: &str = r"(?m)trivy-version:|TRIVY_VERSION|aquasecurity/setup-trivy";
+
+/// The zig archives' build hosts in the Makefile and the Dockerfile, with the Dockerfile's `case`
+/// arm text before the digest: (zig architecture, arm text).
+const ZIG_ARMS: [(&str, &str); 2] = [
+    ("x86_64", "amd64) zig_arch=x86_64; zig_sha256="),
+    ("aarch64", "arm64) zig_arch=aarch64; zig_sha256="),
+];
+/// The musl standard libraries in the Makefile and the Dockerfile, with the Dockerfile's `case`
+/// arm text before the digest: (Rust target, arm text).
+const RUST_STD_ARMS: [(&str, &str); 2] = [
+    (
+        "x86_64-unknown-linux-musl",
+        "amd64) triple=x86_64-unknown-linux-musl; std_sha256=",
+    ),
+    (
+        "aarch64-unknown-linux-musl",
+        "arm64) triple=aarch64-unknown-linux-musl; std_sha256=",
+    ),
+];
 
 /// Every YAML file under .github, with its text; none is a failure, since the scans would check
 /// nothing.
@@ -88,11 +116,42 @@ fn read(edit: Edit, file: &str) -> String {
     edit(file, meta::repo().read(file))
 }
 
+/// A release pin in the Makefile: `NAME := value`.
+fn release_pin(edit: Edit, name: &str) -> PinSource {
+    source(
+        edit,
+        RELEASE_PINS,
+        &format!(r"(?m)^{}\s*:=\s*(\S+)\s*$", regex_escape(name)),
+    )
+}
+
+/// `text` as a regex that matches it literally.
+fn regex_escape(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if r"\.+*?()|[]{}^$".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+/// A digest in the Dockerfile, the 64 hex digits after `arm`.
+fn dockerfile_digest(dockerfile: &str, arm: &str) -> PinSource {
+    PinSource::new(
+        DOCKERFILE,
+        dockerfile,
+        &format!("{}([0-9a-f]{{64}})", regex_escape(arm)),
+    )
+}
+
 /// Every pin the repository writes in more than one file, each one value: the Rust line
 /// (rust-toolchain.toml, Cargo's `rust-version`, the image's tag), the exact Rust release
 /// (rust-toolchain.toml's channel, the image's tag and `ARG RUST_VERSION`, the release the musl
-/// standard libraries are downloaded for),
-/// zig, cargo-zigbuild and `ShellCheck`. `edit` is applied to the content of each file read.
+/// standard libraries are downloaded for, the Makefile's `rust-std` release), zig, cargo-zigbuild,
+/// the zig and `rust-std` digests, and `ShellCheck`. `edit` is applied to the content of each file
+/// read.
 fn pin_problems(edit: Edit) -> Vec<Problem> {
     let dockerfile = read(edit, DOCKERFILE);
     let mut problems = one_value(
@@ -110,12 +169,14 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
             PinSource::rust_channel(RUST_TOOLCHAIN, &read(edit, RUST_TOOLCHAIN)),
             PinSource::rust_image_tag(DOCKERFILE, &dockerfile),
             PinSource::rust_version_arg(DOCKERFILE, &dockerfile),
+            release_pin(edit, "RUST_RELEASE_RUST_STD_VERSION"),
         ],
         &[],
     ));
     problems.extend(one_value(
         "zig",
         &[
+            release_pin(edit, "RUST_RELEASE_ZIG_VERSION"),
             source(edit, DOCKERFILE, ZIG_DOCKERFILE),
             source(edit, CI_WORKFLOW, ZIG_ACTION),
             source(edit, RELEASE_WORKFLOW, ZIG_ACTION),
@@ -125,12 +186,33 @@ fn pin_problems(edit: Edit) -> Vec<Problem> {
     problems.extend(one_value(
         "cargo-zigbuild",
         &[
+            release_pin(edit, "RUST_RELEASE_CARGO_ZIGBUILD_VERSION"),
             source(edit, DOCKERFILE, ZIGBUILD_DOCKERFILE),
             source(edit, CI_WORKFLOW, ZIGBUILD_ACTION),
             source(edit, RELEASE_WORKFLOW, ZIGBUILD_ACTION),
         ],
         &[],
     ));
+    for (arch, arm) in ZIG_ARMS {
+        problems.extend(one_value(
+            &format!("the zig {arch} digest"),
+            &[
+                release_pin(edit, &format!("RUST_RELEASE_ZIG_SHA256_{arch}")),
+                dockerfile_digest(&dockerfile, arm),
+            ],
+            &[],
+        ));
+    }
+    for (target, arm) in RUST_STD_ARMS {
+        problems.extend(one_value(
+            &format!("the rust-std digest for {target}"),
+            &[
+                release_pin(edit, &format!("RUST_RELEASE_RUST_STD_SHA256_{target}")),
+                dockerfile_digest(&dockerfile, arm),
+            ],
+            &[],
+        ));
+    }
     problems.extend(one_value(
         "ShellCheck",
         &[
@@ -152,6 +234,95 @@ fn pins_are_one_value() {
     assert!(problems.is_empty(), "{}", report(&problems));
     rust_release(RUST_TOOLCHAIN, &meta::repo().read(RUST_TOOLCHAIN))
         .unwrap_or_else(|problem| panic!("{problem}"));
+}
+
+/// Every musl target rust-toolchain.toml installs has a `rust-std` digest in the Makefile, which
+/// the image's build stage downloads it by.
+#[test]
+fn every_toolchain_target_has_a_rust_std_digest() {
+    let pins = meta::repo().read(RELEASE_PINS);
+    let targets = toolchain_targets(&meta::repo().read(RUST_TOOLCHAIN));
+    assert!(!targets.is_empty(), "{RUST_TOOLCHAIN} names no target");
+    for target in targets {
+        assert!(
+            pins.contains(&format!("RUST_RELEASE_RUST_STD_SHA256_{target} :=")),
+            "{RELEASE_PINS} records no rust-std digest for {target}"
+        );
+    }
+}
+
+/// The release settings the Makefile owns, in its order: the toolchain pins and digests, the Rust
+/// target of each platform, the platforms checksums.txt covers and the output directory.
+const RELEASE_SETTINGS: [&str; 13] = [
+    "RUST_RELEASE_ZIG_VERSION",
+    "RUST_RELEASE_ZIG_SHA256_x86_64",
+    "RUST_RELEASE_ZIG_SHA256_aarch64",
+    "RUST_RELEASE_CARGO_ZIGBUILD_VERSION",
+    "RUST_RELEASE_CARGO_ZIGBUILD_SHA256_x86_64-unknown-linux-musl",
+    "RUST_RELEASE_CARGO_ZIGBUILD_SHA256_aarch64-unknown-linux-gnu",
+    "RUST_RELEASE_RUST_STD_VERSION",
+    "RUST_RELEASE_RUST_STD_SHA256_x86_64-unknown-linux-musl",
+    "RUST_RELEASE_RUST_STD_SHA256_aarch64-unknown-linux-musl",
+    "RUST_RELEASE_TRIPLE_linux_amd64",
+    "RUST_RELEASE_TRIPLE_linux_arm64",
+    "RUST_RELEASE_SHIPPED_PLATFORMS",
+    "RUST_RELEASE_DIR",
+];
+
+/// make against the repository, without the flags of a parent make or commit hook.
+fn make() -> std::process::Command {
+    let mut command = std::process::Command::new("make");
+    command
+        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+        .arg("--no-print-directory")
+        .env_remove("MAKEFLAGS")
+        .env_remove("MFLAGS")
+        .env_remove("MAKEOVERRIDES");
+    command
+}
+
+/// Every `RUST_RELEASE_*` setting of the Makefile keeps its value under an environment variable of
+/// the same name, and a command-line assignment still overrides it (as the release's
+/// `RUST_RELEASE_PLATFORMS` does for the shared snippet's own settings).
+#[test]
+fn release_pins_ignore_environment_but_keep_command_line_overrides() {
+    let pins = meta::repo().read(RELEASE_PINS);
+    let names: Vec<&str> = pins
+        .lines()
+        .filter(|line| line.starts_with("RUST_RELEASE_"))
+        .filter_map(|line| line.split_once(" := ").map(|(name, _)| name))
+        .collect();
+    assert_eq!(
+        names, RELEASE_SETTINGS,
+        "{RELEASE_PINS}'s release settings, each set with :="
+    );
+    for name in names {
+        let print = format!("--eval=print-release-pin: ; @printf '%s' '$({name})'");
+        let run = |arguments: &[String], environment: Option<&str>| {
+            let mut command = make();
+            command.arg(&print).arg("print-release-pin").args(arguments);
+            if let Some(value) = environment {
+                command.env(name, value);
+            }
+            let output = command
+                .output()
+                .unwrap_or_else(|error| panic!("cannot run make: {error}"));
+            assert!(output.status.success(), "{name}: {output:?}");
+            output.stdout
+        };
+        let baseline = run(&[], None);
+        assert!(!baseline.is_empty(), "{name} is empty");
+        assert_eq!(
+            run(&[], Some("environment-override")),
+            baseline,
+            "{name} follows the environment"
+        );
+        assert_eq!(
+            run(&[format!("{name}=override")], Some("environment-override")),
+            b"override",
+            "{name} ignores the command line"
+        );
+    }
 }
 
 /// One negative control: `from` replaced by `to` in `file` breaks `want` problems.
@@ -229,6 +400,20 @@ fn rust_pin_rules_refuse_each_edit() {
             format!("ARG RUST_VERSION={line}.99"),
             1,
         ),
+        (
+            "the Makefile's rust-std of another patch",
+            RELEASE_PINS,
+            format!("RUST_RELEASE_RUST_STD_VERSION := {release}"),
+            format!("RUST_RELEASE_RUST_STD_VERSION := {line}.99"),
+            1,
+        ),
+        (
+            "a Makefile that no longer writes the rust-std release",
+            RELEASE_PINS,
+            "RUST_RELEASE_RUST_STD_VERSION :=".to_owned(),
+            "RUST_RELEASE_RUST_STD_VERSION ?=".to_owned(),
+            1,
+        ),
     ]);
 }
 
@@ -242,6 +427,13 @@ fn tool_pin_rules_refuse_each_edit() {
             DOCKERFILE,
             "ARG ZIG_VERSION=".to_owned(),
             "ARG ZIG_VERSION=9".to_owned(),
+            1,
+        ),
+        (
+            "zig in the Makefile",
+            RELEASE_PINS,
+            "RUST_RELEASE_ZIG_VERSION := ".to_owned(),
+            "RUST_RELEASE_ZIG_VERSION := 9".to_owned(),
             1,
         ),
         (
@@ -259,6 +451,13 @@ fn tool_pin_rules_refuse_each_edit() {
             1,
         ),
         (
+            "cargo-zigbuild in the Makefile",
+            RELEASE_PINS,
+            "RUST_RELEASE_CARGO_ZIGBUILD_VERSION := ".to_owned(),
+            "RUST_RELEASE_CARGO_ZIGBUILD_VERSION := 9".to_owned(),
+            1,
+        ),
+        (
             "cargo-zigbuild in CI",
             CI_WORKFLOW,
             "cargo-zigbuild-version: ".to_owned(),
@@ -270,6 +469,34 @@ fn tool_pin_rules_refuse_each_edit() {
             RELEASE_WORKFLOW,
             "cargo-zigbuild-version:".to_owned(),
             "cargo-zigbuild-version-gone:".to_owned(),
+            1,
+        ),
+        (
+            "a zig digest in the Makefile",
+            RELEASE_PINS,
+            "RUST_RELEASE_ZIG_SHA256_aarch64 := ".to_owned(),
+            "RUST_RELEASE_ZIG_SHA256_aarch64 := 0".to_owned(),
+            1,
+        ),
+        (
+            "a zig digest in the Dockerfile",
+            DOCKERFILE,
+            "zig_arch=x86_64; zig_sha256=".to_owned(),
+            "zig_arch=x86_64; zig_sha256=0".to_owned(),
+            1,
+        ),
+        (
+            "a rust-std digest in the Makefile",
+            RELEASE_PINS,
+            "RUST_RELEASE_RUST_STD_SHA256_x86_64-unknown-linux-musl := ".to_owned(),
+            "RUST_RELEASE_RUST_STD_SHA256_x86_64-unknown-linux-musl := 0".to_owned(),
+            1,
+        ),
+        (
+            "a rust-std digest in the Dockerfile",
+            DOCKERFILE,
+            "triple=aarch64-unknown-linux-musl; std_sha256=".to_owned(),
+            "triple=aarch64-unknown-linux-musl; std_sha256=0".to_owned(),
             1,
         ),
         (

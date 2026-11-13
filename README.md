@@ -66,8 +66,8 @@ The static musl binaries, as the releases ship them, need [zig](https://ziglang.
 cargo-zigbuild (`rust-toolchain.toml` adds both musl targets):
 
 ```bash
-make dist-static       # dist/awtrix-controller-linux-amd64 and -linux-arm64, as the release builds them
-make image-build-test  # the image from those binaries, then its tests
+make rust-release-binaries  # dist/awtrix-controller-linux-amd64 and -linux-arm64, as the release builds them
+make image-build-test       # the image from those binaries, then its tests
 ```
 
 `make docker-build` builds the image's default target instead, which compiles the binary itself, so
