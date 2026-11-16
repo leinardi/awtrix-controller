@@ -282,13 +282,14 @@ happened: report the verification evidence you actually have (under adversarial-
 directly, the CI status or gate output in the PR or session) and what is missing, such as a
 Dockerfile or `scripts/image-test.sh` change with no image build or test reported, a dependency
 change with no cargo-deny result, or a `release.yaml` change that only a release dry run exercises
-end to end. A failure in that evidence caused by the change is a confirmed finding. Never say that a
-check you did not see passed. Judge whether the change's tests prove it: a behaviour change needs a
-test that fails on the old code, and the broker tests start a real rmqtt broker, so they are part of
-`make verify`. When invoked directly, one focused test (`cargo test --locked -p awtrix-controller
---test broker disconnect_unregisters`) may be run to confirm a single suspected finding, never a
-full suite or gate. A candidate that is neither reproduced nor traced end to end is dropped: a vague
-"consider" is not a finding.
+end to end. Judge what is missing against `AGENTS.md`'s *Validation matrix*: every changed path owes
+the checks its row names. A failure in that evidence caused by the change is a confirmed finding.
+Never say that a check you did not see passed. Judge whether the change's tests prove it: a
+behaviour change needs a test that fails on the old code, and the broker tests start a real rmqtt
+broker, so they are part of `make verify`. When invoked directly, one focused test (`cargo test
+--locked -p awtrix-controller --test broker disconnect_unregisters`) may be run to confirm a single
+suspected finding, never a full suite or gate. A candidate that is neither reproduced nor traced end
+to end is dropped: a vague "consider" is not a finding.
 
 ## Report
 
