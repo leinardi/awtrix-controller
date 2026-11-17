@@ -140,6 +140,14 @@ its own features.
   the URL. `make rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so
   the graphs of the root package and of the meta crate (`repo-meta`, `testenv-core` and their
   dependencies) are both gated.
+- **The configuration loader stays local.** rust-common's `config-layer` (from BitGauge) reads
+  the file into an untyped tree, lays an environment overlay over it, types each value through a
+  profile and collects every problem. This controller's loader (`src/config`) is lenient
+  `serde_yaml_ng`: unknown keys are ignored, there is no environment overlay, and the field
+  decoders read scalars as Go's yaml.v3 did (`src/config/lenient.rs`: `null` as the zero value,
+  YAML 1.1 booleans, Go's integer spellings). Moving would change what a configuration file is
+  accepted with, so it stays; config-layer does not reproduce it, so it is not a later candidate
+  either.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
@@ -215,6 +223,10 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
   only the production wiring in `src/run`
   (`#[expect(clippy::disallowed_types, reason = "...")]` on its `use`) and the debug weather
   simulation (`#[expect(clippy::disallowed_methods, reason = "...")]`) read the wall clock.
+- **No child process:** `clippy.toml` also bans `std::process::Command::new` and
+  `tokio::process::Command::new`: the controller spawns nothing. Only a test or meta-test that runs
+  a program (the built controller, `make`) carries an
+  `#[expect(clippy::disallowed_methods, reason = "...")]` for it.
 - **Daylight saving:** every "local date and wall time to instant" conversion goes through
   `clock::resolve_local` (a gap moves forward by its length, a fold takes the earlier instant). No
   other module calls jiff's disambiguation directly.
