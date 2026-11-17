@@ -116,8 +116,11 @@ every connected
   years. Fire times are strictly after `from`.
 - No wall clock outside the production wiring in `src/run` (the one `clock::SystemClock`, banned
   by `clippy.toml` `disallowed-types`) and the debug weather simulation (`disallowed-methods`); a
-  new `#[expect(clippy::disallowed_types)]` or `#[expect(clippy::disallowed_methods)]` elsewhere,
-  or `::clock::SystemClock` written as an expression, is a finding.
+  new `#[expect(clippy::disallowed_types)]` or an `#[expect(clippy::disallowed_methods)]` for a
+  clock read elsewhere, or `::clock::SystemClock` written as an expression, is a finding.
+- No child process: `clippy.toml` bans `std::process::Command::new` and
+  `tokio::process::Command::new`. Only a test or meta-test that runs a program carries an
+  `#[expect(clippy::disallowed_methods)]` for it; one in production code is a finding.
 - With no `timezone`, day/night, energy saving and scheduled notifications use the system zone
   but the weather controller uses `UTC`, as Go did.
 - Polar night or midnight sun (the sun function returns `None`) means Night and a retry at the

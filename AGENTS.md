@@ -122,8 +122,8 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v1.1.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "1.1"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
+tag (`tag = "v2.0.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
+`version = "2.0"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
 its own features.
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
@@ -140,6 +140,14 @@ its own features.
   the URL. `make rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so
   the graphs of the root package and of the meta crate (`repo-meta`, `testenv-core` and their
   dependencies) are both gated.
+- **The configuration loader stays local.** rust-common's `config-layer` (from BitGauge) reads
+  the file into an untyped tree, lays an environment overlay over it, types each value through a
+  profile and collects every problem. This controller's loader (`src/config`) is lenient
+  `serde_yaml_ng`: unknown keys are ignored, there is no environment overlay, and the field
+  decoders read scalars as Go's yaml.v3 did (`src/config/lenient.rs`: `null` as the zero value,
+  YAML 1.1 booleans, Go's integer spellings). Moving would change what a configuration file is
+  accepted with, so it stays; config-layer does not reproduce it, so it is not a later candidate
+  either.
 - **Local work on a shared crate** uses an uncommitted
   `[patch."https://github.com/leinardi/rust-common"]` table in the root `Cargo.toml`, one
   `<name> = { path = "../rust-common/crates/<name>" }` line for each of the five crates (a patched
@@ -208,12 +216,17 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 ## Conventions worth knowing
 
 - **Clock discipline:** `clippy.toml`'s `disallowed-methods` bans `jiff::Timestamp::now`,
-  `jiff::Zoned::now`, `std::time::SystemTime::now` and `std::time::Instant::now`, and its
-  `disallowed-types` bans `clock::SystemClock`. Scheduling and window code reads the time from the
-  injected `src/clock` clock (rust-common's `clock`, re-exported without `SystemClock`), so the
-  tests can drive it, through `run::Options::clock`; only the production wiring in `src/run`
+  `jiff::Zoned::now`, `std::time::SystemTime::now`, `std::time::Instant::now` and
+  `chrono::Utc::now`, and its `disallowed-types` bans `clock::SystemClock`. Scheduling and
+  window code reads the time from the injected `src/clock` clock (rust-common's `clock`,
+  re-exported without `SystemClock`), so the tests can drive it, through `run::Options::clock`;
+  only the production wiring in `src/run`
   (`#[expect(clippy::disallowed_types, reason = "...")]` on its `use`) and the debug weather
   simulation (`#[expect(clippy::disallowed_methods, reason = "...")]`) read the wall clock.
+- **No child process:** `clippy.toml` also bans `std::process::Command::new` and
+  `tokio::process::Command::new`: the controller spawns nothing. Only a test or meta-test that runs
+  a program (the built controller, `make`) carries an
+  `#[expect(clippy::disallowed_methods, reason = "...")]` for it.
 - **Daylight saving:** every "local date and wall time to instant" conversion goes through
   `clock::resolve_local` (a gap moves forward by its length, a fold takes the earlier instant). No
   other module calls jiff's disambiguation directly.

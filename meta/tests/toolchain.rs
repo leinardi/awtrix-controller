@@ -270,6 +270,10 @@ const RELEASE_SETTINGS: [&str; 13] = [
 ];
 
 /// make against the repository, without the flags of a parent make or commit hook.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the meta-test runs make to read the pins it records"
+)]
 fn make() -> std::process::Command {
     let mut command = std::process::Command::new("make");
     command
