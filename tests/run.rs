@@ -260,6 +260,10 @@ async fn config_path_from_the_environment() {
 /// the logger is up before the file is loaded. Run as a process, so the real global logger
 /// writes to its standard output; a port already taken then ends it with exit code 2.
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the test runs the built controller as a child to read its log"
+)]
 fn configuration_warnings_reach_the_log() {
     let taken = TcpListener::bind("0.0.0.0:0").expect("bind");
     let port = taken.local_addr().expect("address").port();
