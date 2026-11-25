@@ -149,7 +149,7 @@ impl Window {
     }
 
     fn local_date(&self, instant: Timestamp) -> Date {
-        instant.to_zoned(self.zone.clone()).date()
+        instant.to_zoned_datetime(self.zone.clone()).date()
     }
 }
 

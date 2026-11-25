@@ -54,7 +54,7 @@ pub use clock::{Clock, TokioClock};
 /// The date and time lie outside the range jiff represents.
 pub fn resolve_local(date: Date, time: Time, zone: &TimeZone) -> Result<Timestamp, jiff::Error> {
     let zoned = zone
-        .to_ambiguous_zoned(date.to_datetime(time))
+        .to_ambiguous_zoned_datetime(date.to_datetime(time))
         .compatible()?;
     Ok(zoned.timestamp())
 }
@@ -63,7 +63,7 @@ pub fn resolve_local(date: Date, time: Time, zone: &TimeZone) -> Result<Timestam
 /// zone whose clocks change at midnight follows the same policy.
 #[must_use]
 pub fn next_local_midnight(instant: Timestamp, zone: &TimeZone) -> Timestamp {
-    let today = instant.to_zoned(zone.clone()).date();
+    let today = instant.to_zoned_datetime(zone.clone()).date();
     today
         .tomorrow()
         .ok()

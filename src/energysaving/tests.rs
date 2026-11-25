@@ -230,7 +230,7 @@ async fn seven_o_clock_fires_at_seven_local_on_transition_days() {
 
         let (active, at) = changes.recv().await.expect("activation");
         assert!(active);
-        let local = at.to_zoned(zone.clone());
+        let local = at.to_zoned_datetime(zone.clone());
         assert_eq!(
             (local.date(), local.time()),
             (day, time(7, 0, 0, 0)),
@@ -239,7 +239,7 @@ async fn seven_o_clock_fires_at_seven_local_on_transition_days() {
 
         let (active, at) = changes.recv().await.expect("deactivation");
         assert!(!active);
-        let local = at.to_zoned(zone.clone());
+        let local = at.to_zoned_datetime(zone.clone());
         assert_eq!(
             (local.date(), local.time()),
             (day, time(9, 0, 0, 0)),

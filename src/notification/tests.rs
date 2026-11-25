@@ -492,11 +492,11 @@ fn recurring_occurrences_across_transitions() {
             instant(want),
             "after {fired}"
         );
-        let weekday = instant(fired).to_zoned(zone.clone()).weekday();
+        let weekday = instant(fired).to_zoned_datetime(zone.clone()).weekday();
         let week_later = instant(want) + jiff::SignedDuration::from_hours(6 * 24);
         let weekly = next_weekly_occurrence(instant(fired), weekday, at, zone);
         assert_eq!(
-            weekly.to_zoned(zone.clone()).time(),
+            weekly.to_zoned_datetime(zone.clone()).time(),
             at,
             "weekly after {fired}"
         );

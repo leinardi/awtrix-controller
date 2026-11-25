@@ -405,7 +405,7 @@ impl Controller {
     /// `instant` as HH:MM in the configured time zone.
     fn local_time(&self, instant: Timestamp) -> String {
         instant
-            .to_zoned(self.zone.clone())
+            .to_zoned_datetime(self.zone.clone())
             .strftime("%H:%M")
             .to_string()
     }
