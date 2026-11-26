@@ -85,9 +85,10 @@ A Cargo workspace: the root package `awtrix-controller` (a library plus the bina
   version everywhere, the zig, cargo-zigbuild and ShellCheck pins, the Makefile's `RUST_RELEASE_*`
   pins and digests, Trivy never pinned, no vacuous flags), `dockerfiles.rs` (the image's frontend,
   its five stages and their tag-pinned bases), `workspace_lints.rs` (every member opts into the
-  workspace lints) and `rust_common_pins.rs` (the rust-common pins: one `vX.Y.Z` tag, each
-  `version` its `<major>.<minor>`). Most run rust-common's `repo-meta` checks with this
-  repository's parameters, beside the rules that are its own.
+  workspace lints), `rust_common_pins.rs` (the rust-common pins: one `vX.Y.Z` tag, each
+  `version` its `<major>.<minor>`) and `rust_common_boundary.rs` (one package per crate at
+  rust-common's boundary, taken through its re-export). Most run rust-common's `repo-meta`
+  checks with this repository's parameters, beside the rules that are its own.
   `meta/src/lib.rs` holds what they share: `repo()`, the repository under test.
 - `deployments/` — the Dockerfile (`dhi.io` bases pinned by tag, deliberately not by digest:
   dhi.io rebuilds its tags too often; the `# syntax` frontend by digest; two targets on one `base`
@@ -122,24 +123,28 @@ logger's subscriber, with the `log-bridge` feature; the root `[dev-dependencies]
 feature for `Capture` and `set_default`) are the root package's; `repo-meta` and `testenv-core`
 (default features) are the meta crate's. They come from
 [leinardi/rust-common](https://github.com/leinardi/rust-common), a git dependency pinned by release
-tag (`tag = "v3.0.0"`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with
-`version = "3.0"`, the tag's `<major>.<minor>`. Each member opts in with `workspace = true`, plus
-its own features.
+tag (`tag`) in the root `Cargo.toml`'s `[workspace.dependencies]`, with `version` the tag's
+`<major>.<minor>`. Each member opts in with `workspace = true`, plus its own features.
+
+The current pin is `v4.0.0`. <!-- rust-pin-current -->
 
 - **A behaviour difference is a parameter of the shared crate**, passed from here, never a fork of
   its code into this repository. A fix to shared code lands in rust-common first, then reaches here
   by moving the `tag`.
-- **Moving the `tag`** needs the network: change it on all five lines (a partial move locks two tags
-  side by side, and the `rust_common_pins` meta-test refuses it), and `version` with it when the
-  tag's `<major>.<minor>` moves (a `v1.1.0` checkout does not resolve against `version = "1.0"`),
-  then run `cargo fetch` before the `--locked` make targets, which otherwise refuse the stale lock.
-  The manifest change is what makes cargo re-resolve the git source; `cargo fetch` changes nothing
-  else, whereas `cargo update -p <crate>` also moves unrelated edges (windows-sys, socket2,
-  getrandom). `git diff Cargo.lock` must touch only rust-common lines. Commit the `Cargo.toml` and
-  `Cargo.lock` changes together. `deny.toml` allow-lists the source (`allow-git`); it changes with
-  the URL. `make rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so
-  the graphs of the root package and of the meta crate (`repo-meta`, `testenv-core` and their
-  dependencies) are both gated.
+- **Moving the `tag`** needs the network: `make rust-pin-bump TAG=vX.Y.Z` rewrites `tag` and
+  `version` on all five lines and the current-pin line above, re-resolves `Cargo.lock` and fails
+  unless only rust-common's packages moved (`cargo update -p <crate>` would also move unrelated
+  edges: windows-sys, socket2, getrandom). Commit the `Cargo.toml` and `Cargo.lock` changes
+  together. `deny.toml` allow-lists the source (`allow-git`); it changes with the URL.
+  `make rust-deny` and the pre-commit hook check the whole workspace (`--workspace`), so the graphs
+  of the root package and of the meta crate (`repo-meta`, `testenv-core` and their dependencies)
+  are both gated.
+- **A crate whose types cross rust-common's API is one package with rust-common's**:
+  tracing-subscriber (the logger's `MakeWriter`) comes through
+  `tracing_setup::tracing_subscriber`, never a declaration of its own; jiff, which rust-common
+  does not re-export, is declared here at the version clock uses. Two copies compile apart and
+  fail at the boundary with E0277 or E0308; `meta/tests/rust_common_boundary.rs` holds each to one
+  package (CI runs it before the build).
 - **The configuration loader stays local.** rust-common's `config-layer` (from BitGauge) reads
   the file into an untyped tree, lays an environment overlay over it, types each value through a
   profile and collects every problem. This controller's loader (`src/config`) is lenient
@@ -216,7 +221,7 @@ declares `[lints] workspace = true`, and every lint and test command runs worksp
 ## Conventions worth knowing
 
 - **Clock discipline:** `clippy.toml`'s `disallowed-methods` bans `jiff::Timestamp::now`,
-  `jiff::Zoned::now`, `std::time::SystemTime::now`, `std::time::Instant::now` and
+  `jiff::ZonedDateTime::now`, `std::time::SystemTime::now`, `std::time::Instant::now` and
   `chrono::Utc::now`, and its `disallowed-types` bans `clock::SystemClock`. Scheduling and
   window code reads the time from the injected `src/clock` clock (rust-common's `clock`,
   re-exported without `SystemClock`), so the tests can drive it, through `run::Options::clock`;

@@ -49,6 +49,11 @@ MK_COMMON_BOOTSTRAP := $(shell "$(MK_COMMON_BOOTSTRAP_SCRIPT)" \
 # Project-specific config
 # -----------------------------------------------------------------------------
 BIN_NAME     ?= awtrix-controller
+
+# rust-pin-bump (rust.mk): the rust-common pins it moves, and the doc whose current-pin line it
+# moves with them.
+RUST_PIN_URL  := https://github.com/leinardi/rust-common
+RUST_PIN_DOCS := AGENTS.md
 DIST_DIR     ?= dist
 
 # Rust settings for make-common's rust.mk. src/version.rs reads the AWTRIX_CONTROLLER_VERSION,

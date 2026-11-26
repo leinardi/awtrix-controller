@@ -31,8 +31,8 @@ use std::io;
 
 use tracing::Dispatch;
 use tracing::level_filters::LevelFilter;
+use tracing_setup::tracing_subscriber::fmt::MakeWriter;
 use tracing_setup::{InstallError, Options};
-use tracing_subscriber::fmt::MakeWriter;
 
 use crate::config::LogFormat;
 

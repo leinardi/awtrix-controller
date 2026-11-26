@@ -149,7 +149,7 @@ impl ScheduledNotifier {
         let publish = Arc::clone(&self.publish);
 
         move || {
-            let year = clock.now().to_zoned(zone.clone()).year();
+            let year = clock.now().to_zoned_datetime(zone.clone()).year();
             let notification = Arc::new(build_notification(&entry, year));
             let entry = Arc::clone(&entry);
             let clients = connected_ids();
@@ -297,7 +297,7 @@ fn first_after(
 }
 
 fn local_date(instant: Timestamp, zone: &TimeZone) -> Date {
-    instant.to_zoned(zone.clone()).date()
+    instant.to_zoned_datetime(zone.clone()).date()
 }
 
 /// The next `time` after `from`: today's, else tomorrow's.

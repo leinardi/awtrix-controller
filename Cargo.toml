@@ -12,19 +12,21 @@ repository = "https://github.com/leinardi/awtrix-controller"
 # The crates shared with the other Rust services, from leinardi/rust-common: a git dependency
 # pinned by release tag (`tag`), with `version` the tag's `<major>.<minor>`; `version`
 # keeps cargo-deny's `wildcards = "deny"` satisfied and makes cargo refuse a checkout of another
-# version. Moving the pin: change the `tag` on every line (and `version`, when the tag's
-# `<major>.<minor>` moves), run `cargo fetch` (not `cargo update -p`); `git diff Cargo.lock` must
-# touch only rust-common lines (AGENTS.md, "Shared crates"). Each member opts in with
+# version. Moving the pin: `make rust-pin-bump TAG=vX.Y.Z`, which rewrites `tag` and `version` on
+# every line, re-resolves Cargo.lock and fails unless only rust-common's packages moved (AGENTS.md,
+# "Shared crates", names the current pin). The crates whose types cross rust-common's API come
+# through it (jiff is one package with clock's; tracing-subscriber from tracing-setup);
+# meta/tests/rust_common_boundary.rs holds each to one package. Each member opts in with
 # `<name>.workspace = true` and its own features. Local work on both repositories: an uncommitted
 # `[patch."https://github.com/leinardi/rust-common"]` table naming each crate with
 # `path = "../rust-common/crates/<name>"`, never in a release or image build (the image's build
 # context does not hold them).
 [workspace.dependencies]
-clock = { git = "https://github.com/leinardi/rust-common", tag = "v3.0.0", version = "3.0" }
-repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v3.0.0", version = "3.0" }
-service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v3.0.0", version = "3.0" }
-testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v3.0.0", version = "3.0" }
-tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v3.0.0", version = "3.0" }
+clock = { git = "https://github.com/leinardi/rust-common", tag = "v4.0.0", version = "4.0" }
+repo-meta = { git = "https://github.com/leinardi/rust-common", tag = "v4.0.0", version = "4.0" }
+service-kit = { git = "https://github.com/leinardi/rust-common", tag = "v4.0.0", version = "4.0" }
+testenv-core = { git = "https://github.com/leinardi/rust-common", tag = "v4.0.0", version = "4.0" }
+tracing-setup = { git = "https://github.com/leinardi/rust-common", tag = "v4.0.0", version = "4.0" }
 
 # The lint set lives here once. Every member opts in with `[lints] workspace = true` (a member does
 # not inherit it otherwise, and the meta crate asserts that each one does), and every clippy run is
@@ -74,7 +76,7 @@ futures = "0.3.34"
 # The injected wall clock (Clock, TokioClock, the tests' FakeClock; SystemClock is built only by
 # the run wiring), re-exported by src/clock (rust-common).
 clock.workspace = true
-jiff = { version = "0.2.38", features = ["tzdb-bundle-always", "serde"] }
+jiff = { version = "1.0.3", features = ["tzdb-bundle-always", "serde"] }
 rmqtt = { version = "0.24.0", default-features = false, features = ["ws", "plugin", "retain"] }
 rmqtt-retainer = { version = "0.24.0", features = ["ram"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -92,8 +94,6 @@ tracing = "0.1.44"
 # The logger's subscriber: tracing-subscriber's text or flat JSON, no ANSI, UTC timestamps, with
 # the `log` facade bridged in for rmqtt (rust-common); the level and format are resolved here.
 tracing-setup = { workspace = true, features = ["log-bridge"] }
-# MakeWriter, the bound of the logger's writer.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
 
 [profile.release]
